@@ -605,7 +605,7 @@ exports.dashboardAnalytics = async (req, res) => {
     let finalResult = {
         TotalChargingSessions: data.TotalChargingSessions,
         TotalActiveSessions: data.TotalActiveSessions,
-        TotalRevenue: data.TotalRevenue.toFixed(2),
+        TotalRevenue: data?.TotalRevenue?.toFixed(2),
         TotalEnergy: data.TotalEnergy,
         TotalChargingStations: data.TotalChargingStations,
         TotalRfid: data.TotalRfid,
