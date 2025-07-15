@@ -8,7 +8,7 @@ const { webSocketServer } = require('./src/wsInit');
 //!DONOT DELETE
 const { mobileWebSocketServer } = require("./src/wsInit/appWs"); //!DONOT DELETE
 const errorHandler = require("./src/middlewares/errorMiddleware");
-const PORT = process.env.PORT || 6500;
+const PORT =  6500;
 const connectDB = require("./src/db");
 const app = express();
 connectDB();
