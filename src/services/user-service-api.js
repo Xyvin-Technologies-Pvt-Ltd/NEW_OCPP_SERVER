@@ -12,7 +12,7 @@ const setURL = async () => {
     let USER_SERVICE_URL;
 
     try {
-        if (process.env.NODE_ENV !== 'production') {
+        if (process.env.NODE_ENV === 'production') {
             USER_SERVICE_URL = process.env.USER_SERVICE_URL || 'http://localhost:5050';
         } else {
             const userUrlSecret = await getSecret();

@@ -7,16 +7,9 @@ let dbName;
 const setMongoConnectionDetails = async () => {
   try {
    
-    if (process.env.NODE_ENV !== 'production') {
-      mongoUrl = process.env.MONGO_URI || 'mongodb+srv://userone:userone@serverlessinstance0.8pwddqq.mongodb.net';
+      mongoUrl = process.env.MONGO_URI || 'mongodb+srv://tijotjoseph:qmfI5GHcRb5UvgrH@xpenseadb.ad52dla.mongodb.net/goec_dev';
       dbName = process.env.DB_NAME || 'OXIUM_DB';
-    } else {
-      const mongoSecret = await getSecret();
-   
-
-      mongoUrl = mongoSecret.MONGO_URI;
-      dbName = mongoSecret.DB_NAME;
-    }
+    
   } catch (error) {
     console.error('Error setting MongoDB connection details:', error);
     process.exit(1);

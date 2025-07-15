@@ -16,7 +16,7 @@ const setURL = async () => {
     let EV_MACHINE_SERVICE_URL;
 
     try {
-      if (process.env.NODE_ENV !== 'production') {
+      if (process.env.NODE_ENV === 'production') {
         EV_MACHINE_SERVICE_URL = process.env.EV_MACHINE_SERVICE_URL || 'http://localhost:5050';
       } else {
         const evUrlSecret = await getSecret();
