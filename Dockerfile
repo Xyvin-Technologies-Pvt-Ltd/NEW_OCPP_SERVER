@@ -33,4 +33,5 @@ COPY . .
 EXPOSE 4000
 
 # Run the application.
-CMD npm start
+CMD ["node", "app.js"]
+
