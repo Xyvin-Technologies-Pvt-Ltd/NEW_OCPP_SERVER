@@ -9,7 +9,7 @@ const authVerify = (req, res, next) => {
     return res.status(401).json({ message: "No token provided" });
   }
 
-  jwt.verify(jwt_token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+  jwt.verify(jwt_token, 'OXIUM', (err, decoded) => {
     if (err) {
       return res.status(403).json({ message: "Failed to authenticate token" });
     }

@@ -6,7 +6,7 @@ const generateToken = require('../utils/generateToken');
 
 
 let USER_URL;
-let AUTH_SECRET;
+let AUTH_SECRET='Nz9rG9y6dA3jT5wP8qZ4xW6sVeK2iS3uQ5oX8vC7bP';
 let token;
 const setURL = async () => {
     let USER_SERVICE_URL;
