@@ -7,7 +7,7 @@ let dbName;
 const setMongoConnectionDetails = async () => {
   try {
    
-      mongoUrl = process.env.MONGO_URI || 'mongodb+srv://tijotjoseph:qmfI5GHcRb5UvgrH@xpenseadb.ad52dla.mongodb.net/goec_dev';
+      mongoUrl = process.env.MONGO_URI || 'mongodb+srv://tijotjoseph:4CHkgnaHODjH0RIR@loyaltycarddb.3o6xb60.mongodb.net';
       dbName = process.env.DB_NAME || 'OXIUM_DB';
     
   } catch (error) {
