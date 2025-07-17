@@ -43,8 +43,9 @@ const authenticateChargePoint = async (evMachineCPID) => {
         const response = await axios.get(`${EV_URL}/evMachine/evMachineCPID/${evMachineCPID}`, {
           headers: {
             Authorization: `Bearer ${token}`,
-        }
+          }
         })
+        console.log("🚀 ~ authenticateChargePoint ~ response:", response)
         return response.data.status
 
     } catch (error) {
