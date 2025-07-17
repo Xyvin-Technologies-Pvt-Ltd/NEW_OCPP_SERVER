@@ -19,7 +19,7 @@ const setURL = async () => {
       AUTH_SECRET = userUrlSecret.AUTH_SECRET;
       token = await generateToken(AUTH_SECRET);
     }
-
+    token = await generateToken(AUTH_SECRET);
     NOTIFICATION_URL = `${NOTIFICATION_SERVICE_URL}/api/v1/notification`;
   } catch (error) {
     console.error("Error setting secrets:", error);

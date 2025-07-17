@@ -20,6 +20,7 @@ const setURL = async () => {
             AUTH_SECRET = userUrlSecret.AUTH_SECRET;
             token = await generateToken(AUTH_SECRET);
         }
+        token = await generateToken(AUTH_SECRET);
 
         USER_URL = `${USER_SERVICE_URL}/api/v1/users`
 

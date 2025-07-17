@@ -25,6 +25,7 @@ const setURL = async () => {
             token = await generateToken(AUTH_SECRET);
 
         }
+        token = await generateToken(AUTH_SECRET);
 
         TRANSACTION_URL = `${TRANSACTION_SERVICE_URL}/api/v1/walletTransaction`
 
