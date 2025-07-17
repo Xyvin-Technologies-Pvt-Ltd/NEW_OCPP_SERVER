@@ -23,7 +23,7 @@ const connectDB = async () => {
     const connectionInstance = await mongoose.connect(`${mongoUrl}/${dbName}`)
 
     console.log(
-      `\n MongoDB connected !!`
+      `\n MongoDB connected at ${mongoUrl}/${dbName}!!`
     )
     // Event monitoring
     mongoose.connection.on('connected', () => {
