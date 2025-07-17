@@ -17,7 +17,7 @@ const setURL = async () => {
 
     try {
         if (process.env.NODE_ENV === 'production') {
-            TRANSACTION_SERVICE_URL = process.env.TRANSACTION_SERVICE_URL || 'http://13.203.2.34:5050';
+            TRANSACTION_SERVICE_URL = process.env.TRANSACTION_SERVICE_URL || 'http://localhost:5050';
         } else {
             const urlSecret = await getSecret();
             TRANSACTION_SERVICE_URL = urlSecret.TRANSACTION_SERVICE_URL;
