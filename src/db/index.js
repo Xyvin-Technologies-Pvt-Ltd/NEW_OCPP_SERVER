@@ -18,10 +18,12 @@ const setMongoConnectionDetails = async () => {
 const connectDB = async () => {
   try {
 
-    const connectionInstance = await mongoose.connect(`mongodb+srv://tijotjoseph:4CHkgnaHODjH0RIR@loyaltycarddb.3o6xb60.mongodb.net/OXIUM_DB`)
+    await setMongoConnectionDetails();
+
+    const connectionInstance = await mongoose.connect(`${mongoUrl}/${dbName}`)
 
     console.log(
-      `\n MongoDB connected at ${mongoUrl}/${dbName}!!  ${connectionInstance}`
+      `\n MongoDB connected at ${mongoUrl}/${dbName}!!${connectionInstance}`
     )
     // Event monitoring
     mongoose.connection.on('connected', () => {
