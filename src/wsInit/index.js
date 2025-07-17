@@ -33,6 +33,7 @@ async function initializeWebSocket(server) {
             const chargePointIdentity = query.split('/').pop();
             // Perform your authentication logic here
             const isAuthenticated = await authenticateChargePoint(chargePointIdentity);
+            console.log('Authentication result:', isAuthenticated);
             if (!isAuthenticated) throw new Error('Unknown Charging Point');
             // If authentication is successful, accept the connection
             accept({

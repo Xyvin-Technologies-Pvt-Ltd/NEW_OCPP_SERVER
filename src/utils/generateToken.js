@@ -3,7 +3,7 @@ require("dotenv").config();
 const { getSecret } = require("../config/env.config");
 
 const generateToken = async (id) => {
-  let ACCESS_TOKEN_SECRET;
+  let ACCESS_TOKEN_SECRET = 'OXIUM';
   if (process.env.NODE_ENV === "production") {
     ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET||'OXIUM';
   } else {
