@@ -1,5 +1,4 @@
 const mongoose = require('mongoose')
-const { getSecret } = require('../config/env.config');
 
 let mongoUrl;
 let dbName;
