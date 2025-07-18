@@ -56,7 +56,8 @@ jobs:
           SSH_KEY: ${{ secrets.LIGHTSAIL_PRIVATE_KEY }}
           USERNAME: ubuntu
           PORT1: 5500 #ocpp
-          PORT2: 6500 #mobile
+          PORT2: 6500 #rest-api
+          PORT3: 7535 #mobile-ws
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
           CONTAINER_NAME: ocpp_server
 
@@ -117,6 +118,7 @@ jobs:
             sudo docker run -d \
               -p ${{ env.PORT1 }}:${{ env.PORT1 }} \
               -p ${{ env.PORT2 }}:${{ env.PORT2 }} \
+              -p ${{ env.PORT3 }}:${{ env.PORT3 }} \
               --restart always \
               --name ${{ env.CONTAINER_NAME }} \
               ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}

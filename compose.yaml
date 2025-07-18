@@ -16,6 +16,7 @@ services:
     ports:
       - 5500:5500
       - 6500:6500
+      - 7535:7535
 
 # The commented out section below is an example of how to define a PostgreSQL
 # database that your application can use. `depends_on` tells Docker Compose to
