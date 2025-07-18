@@ -50,6 +50,7 @@ async function initializeWebSocket(server) {
         console.log(`${client.session.sessionId} connected!`);
         addClient(client); // store client reference
         // Set up a listener for the 'close' event to handle disconnections
+        console.log(`Client connected : ${client}`);
         client.on("close", (data) => {
             console.log(`${client.session.sessionId} disconnected with code ${data.code} and reason: ${data.reason}`);
             deleteClient(client);

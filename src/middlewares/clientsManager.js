@@ -7,6 +7,7 @@ const mobileClients = new Map(); // Map to track mobile client connections
 }
 
 async function getClient(identity) {
+  console.log("🚀 ~ getClient ~ identity:", identity);
   let ws = await allClients.get(identity)
   return ws
 }
@@ -18,6 +19,8 @@ function deleteClient(identity) {
 //For mobile App
 
  async function addMobileClient(clientId, ws) {
+   console.log("🚀 ~ addMobileClient ~ clientId:", clientId)
+   console.log("🚀 ~ addMobileClient ~ ws:", ws)
    mobileClients.set(clientId, ws);
   
 
