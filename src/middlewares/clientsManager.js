@@ -3,6 +3,7 @@ const mobileClients = new Map(); // Map to track mobile client connections
 
 
  async function addClient(client) {
+  console.log("🚀 ~ addClient ~ client:", client)
     allClients.set(client.identity, client);
 }
 

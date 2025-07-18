@@ -45,7 +45,6 @@ const authenticateChargePoint = async (evMachineCPID) => {
             Authorization: `Bearer ${token}`,
           }
         })
-        console.log("🚀 ~ authenticateChargePoint ~ response:", response)
         return response.data.status
 
     } catch (error) {
@@ -57,8 +56,6 @@ const authenticateChargePoint = async (evMachineCPID) => {
 const statusEVPoint = async (evMachineId, params) => {
     try {
         await setURL();
-        console.log("🚀 ~ statusEVPoint ~ params:", params)
-        console.log("🚀 ~ statusEVPoint ~ evMachineId:", evMachineId)
         const response = await axios.post(`${EV_URL}/evMachine/updateStatusConnector/${evMachineId}`,params, {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -80,7 +77,6 @@ const statusCPID = async (evMachineId, status) => {
             Authorization: `Bearer ${token}`,
         }
         }) //
-        console.log("🚀 ~ statusCPID ~ response:", response)
         return response.data.status
 
     } catch (error) {
