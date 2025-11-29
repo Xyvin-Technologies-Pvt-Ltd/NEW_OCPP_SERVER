@@ -1,4 +1,4 @@
-name: Deploy  OCPP TO  LIGHTSAIL
+name: Deploy OCPP Server (PROD)
 
 on:
   push:
@@ -8,12 +8,8 @@ on:
 
 jobs:
   build-and-deploy:
-    name: Build and deploy
+    name: Build and Deploy to PRODUCTION
     runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        node-version: [20.x]
 
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -21,7 +17,11 @@ jobs:
       AWS_REGION: ${{ secrets.AWS_REGION }}
       AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
       ECR_REPOSITORY: ocpp_server
-      IMAGE_TAG: latest
+      IMAGE_TAG: latest   # <-- IMPORTANT: production tag
+      CONTAINER_NAME: ocpp_server_prod
+      PORT1: 5500
+      PORT2: 6500
+      PORT3: 7535
 
     steps:
       - name: Checkout repository
@@ -34,88 +34,60 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Build and Push Docker image
-        id: build-and-push-image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: ocpp_server
-          IMAGE_TAG: latest
+      - name: Build & Push Docker Image (PROD)
         run: |
-          docker build -t ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }} .
-          docker push ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+          docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }} .
+          docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
 
-      - name: Deploy to Lightsail
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: ocpp_server
-          IMAGE_TAG: latest
-          LIGHTSAIL_INSTANCE_IP: ${{ secrets.LIGHTSAIL_INSTANCE_IP }}
-          SSH_KEY: ${{ secrets.LIGHTSAIL_PRIVATE_KEY }}
-          USERNAME: ubuntu
-          PORT1: 5500 #ocpp
-          PORT2: 6500 #rest-api
-          PORT3: 7535 #mobile-ws
-          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
-          CONTAINER_NAME: ocpp_server
-
+      - name: Deploy to Production Server
         uses: appleboy/ssh-action@master
         with:
-          host: ${{ env.LIGHTSAIL_INSTANCE_IP }}
-          username: ${{ env.USERNAME }}
-          key: ${{ env.SSH_KEY }}
+          host: ${{ secrets.PROD_SERVER_IP }}
+          username: root
+          password: ${{ secrets.PROD_SERVER_PASSWORD }}
           script: |
             set -e
-            echo "🔹 Starting deployment..."
+            echo "🚀 Starting Production Deployment..."
 
-            # Check and install Docker if missing
+            # Ensure Docker is installed
             if ! command -v docker &> /dev/null; then
-              echo "➡️ Installing Docker..."
-              sudo apt-get update
-              sudo apt-get install -y docker.io
-            else
-              echo "✅ Docker is already installed"
+              echo "🔹 Installing docker..."
+              sudo apt-get update || sudo dnf install -y dnf-plugins-core
+              sudo apt-get install -y docker.io || sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+              sudo systemctl enable --now docker
             fi
 
-            # Check and install AWS CLI if missing
+            # Ensure AWS CLI exists
             if ! command -v aws &> /dev/null; then
-              echo "➡️ Installing AWS CLI..."
-              curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-              sudo apt-get install -y unzip
-              unzip -q awscliv2.zip
+              echo "🔹 Installing AWS CLI..."
+              curl -L "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+              sudo apt-get install -y unzip || sudo dnf install -y unzip
+              unzip awscliv2.zip >/dev/null
               sudo ./aws/install
               rm -rf aws awscliv2.zip
-            else
-              echo "✅ AWS CLI is already installed"
             fi
 
-            # ✅ Configure AWS credentials (forces IAM user usage)
-            echo "🔹 Configuring AWS CLI credentials..."
+            # Configure AWS access
             mkdir -p ~/.aws
-            echo "[default]" > ~/.aws/credentials
-            echo "aws_access_key_id = ${{ env.AWS_ACCESS_KEY_ID }}" >> ~/.aws/credentials
-            echo "aws_secret_access_key = ${{ env.AWS_SECRET_ACCESS_KEY }}" >> ~/.aws/credentials
-            echo "region = ${{ env.AWS_REGION }}" >> ~/.aws/credentials
-            chmod 600 ~/.aws/credentials
+            cat <<EOF > ~/.aws/credentials
+            [default]
+            aws_access_key_id=${{ env.AWS_ACCESS_KEY_ID }}
+            aws_secret_access_key=${{ env.AWS_SECRET_ACCESS_KEY }}
+            region=${{ env.AWS_REGION }}
+            EOF
 
-            # ECR login
-            echo "🔹 Logging into Amazon ECR..."
-            aws ecr get-login-password --region ${{ env.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+            echo "🔹 Logging into ECR..."
+            aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
 
-            # Pull Docker image
-            echo "🔹 Pulling latest image..."
-            sudo docker pull ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+            echo "🔹 Pulling latest PRODUCTION image..."
+            docker pull ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
 
-            # Stop and remove old container
-            echo "🔹 Stopping old container (if running)..."
-            sudo docker stop ${{ env.CONTAINER_NAME }} || true
-            sudo docker rm ${{ env.CONTAINER_NAME }} || true
+            echo "🔹 Stopping old container..."
+            docker stop ${{ env.CONTAINER_NAME }} || true
+            docker rm ${{ env.CONTAINER_NAME }} || true
 
-            # Run new container
-            echo "🔹 Running new container..."
-            sudo docker run -d \
+            echo "🔹 Starting new container..."
+            docker run -d \
               -p ${{ env.PORT1 }}:${{ env.PORT1 }} \
               -p ${{ env.PORT2 }}:${{ env.PORT2 }} \
               -p ${{ env.PORT3 }}:${{ env.PORT3 }} \
@@ -123,4 +95,5 @@ jobs:
               --name ${{ env.CONTAINER_NAME }} \
               ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
 
-            echo "✅ Deployment complete."
+            echo "🎉 Production Deployment Successful!"
+            docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
