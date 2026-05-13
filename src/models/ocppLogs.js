@@ -1,6 +1,5 @@
 const mongoose = require("mongoose");
 
-// Define the RFID Tag schema
 const ocppSchema = new mongoose.Schema(
   {
     source: {
@@ -23,8 +22,7 @@ const ocppSchema = new mongoose.Schema(
   }
 );
 
-// Create a TTL index on the timestamp field with a TTL of 24 hours (in seconds)
-ocppSchema.index({ timestamp: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 });
+ocppSchema.index({ createdAt: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 });
 
 const OCPPLOG = mongoose.model("ocpplog", ocppSchema);
 

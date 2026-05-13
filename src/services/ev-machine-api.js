@@ -1,139 +1,113 @@
-const axios = require('axios');
-require("dotenv").config();
-const { getSecret } = require('../config/env.config');
-const {axiosErrorHandler} = require('../utils/axiosErrorHandler');
-const generateToken = require('../utils/generateToken');
-
-
-
-
-
+const axios = require("axios");
+const { axiosErrorHandler } = require("../utils/axiosErrorHandler");
+const generateToken = require("../utils/generateToken");
 
 let EV_URL;
-let AUTH_SECRET='Nz9rG9y6dA3jT5wP8qZ4xW6sVeK2iS3uQ5oX8vC7bP';
 let token;
-const setURL = async () => {
-    let EV_MACHINE_SERVICE_URL;
+let configReady = false;
 
-    try {
-      if (process.env.NODE_ENV === 'production') {
-        EV_MACHINE_SERVICE_URL = process.env.EV_MACHINE_SERVICE_URL || 'http://13.203.2.34:5050';
-      } else {
-        const evUrlSecret = await getSecret();
-        EV_MACHINE_SERVICE_URL = evUrlSecret.EV_MACHINE_SERVICE_URL;
-        AUTH_SECRET = evUrlSecret.AUTH_SECRET;
-      }
-
-      EV_URL =  `${EV_MACHINE_SERVICE_URL}/api/v1` 
-      token = await generateToken(AUTH_SECRET);
-
-    } catch (error) {
-      console.error('Error setting secrets:', error);
-      process.exit(1);
-    }
-  };
-
-
+async function ensureServiceConfig() {
+  if (configReady) return;
+  const base = process.env.EV_MACHINE_SERVICE_URL;
+  const payloadId = process.env.AUTH_SECRET;
+  if (!base || !payloadId) {
+    throw new Error("EV_MACHINE_SERVICE_URL and AUTH_SECRET are required");
+  }
+  EV_URL = `${base.replace(/\/+$/u, "")}/api/v1`;
+  token = await generateToken(payloadId);
+  configReady = true;
+}
 
 const authenticateChargePoint = async (evMachineCPID) => {
-    try {
-        await setURL();
-
-
-        const response = await axios.get(`${EV_URL}/evMachine/evMachineCPID/${evMachineCPID}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          }
-        })
-        return response.data.status
-
-    } catch (error) {
-      axiosErrorHandler(error)
-    }
-
-}
+  try {
+    await ensureServiceConfig();
+    const response = await axios.get(`${EV_URL}/evMachine/evMachineCPID/${evMachineCPID}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.data.status;
+  } catch (error) {
+    axiosErrorHandler(error, "authenticateChargePoint");
+    return false;
+  }
+};
 
 const statusEVPoint = async (evMachineId, params) => {
-    try {
-        await setURL();
-        const response = await axios.post(`${EV_URL}/evMachine/updateStatusConnector/${evMachineId}`,params, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-        }
-        })
-        return response.data.status
-
-    } catch (error) {
-      axiosErrorHandler(error)
-    }
-
-}
+  try {
+    await ensureServiceConfig();
+    const response = await axios.post(
+      `${EV_URL}/evMachine/updateStatusConnector/${evMachineId}`,
+      params,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return response.data.status;
+  } catch (error) {
+    axiosErrorHandler(error, "statusEVPoint");
+    return false;
+  }
+};
 
 const statusCPID = async (evMachineId, status) => {
-    try {
-        await setURL();
-        const response = await axios.post(`${EV_URL}/evMachine/updateStatusCPID/${evMachineId}`,{status}, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-        }
-        }) //
-        return response.data.status
-
-    } catch (error) {
-      axiosErrorHandler(error)
-    }
-
-}
+  try {
+    await ensureServiceConfig();
+    const response = await axios.post(
+      `${EV_URL}/evMachine/updateStatusCPID/${evMachineId}`,
+      { status },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return response.data.status;
+  } catch (error) {
+    axiosErrorHandler(error, "statusCPID");
+    return false;
+  }
+};
 
 const getChargingTariff = async (evMachineId) => {
   try {
-      await setURL();
-      
-      const response = await axios.get(`${EV_URL}/evMachine/getChargingTariff/${evMachineId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-      }
-      }) //
-      // const response = await axios.get(`${EV_URL}/evMachine/getChargingTariff/${evMachineId}`) //
-      return response.data
+    await ensureServiceConfig();
+    const response = await axios.get(
+      `${EV_URL}/evMachine/getChargingTariff/${evMachineId}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return response.data;
   } catch (error) {
-    axiosErrorHandler(error)
+    axiosErrorHandler(error, "getChargingTariff");
+    return null;
   }
+};
 
-}
-
-
-const getEvCount = async()=>{
+const getEvCount = async () => {
   try {
-    await setURL();
-   
+    await ensureServiceConfig();
     const response = await axios.get(`${EV_URL}/evMachine/getCount`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-    }
-    }) //
-    return response.data
-} catch (error) {
-  axiosErrorHandler(error)
-}
-}
-
-const getCPID = async(data)=>{
-  try {
-    await setURL();
-    const reqBody = data;
-    const response = await axios.post(`${EV_URL}/evMachine/CPID`,{ locations:reqBody }, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-    },
-    })
-    return response.data
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.data;
   } catch (error) {
-    axiosErrorHandler(error)
+    axiosErrorHandler(error, "getEvCount");
+    return null;
   }
-}
+};
 
+const getCPID = async (data) => {
+  try {
+    await ensureServiceConfig();
+    const response = await axios.post(
+      `${EV_URL}/evMachine/CPID`,
+      { locations: data },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return response.data;
+  } catch (error) {
+    axiosErrorHandler(error, "getCPID");
+    return null;
+  }
+};
 
-
-module.exports = {authenticateChargePoint, getEvCount,statusEVPoint,statusCPID, getChargingTariff, getCPID};
-
+module.exports = {
+  authenticateChargePoint,
+  getEvCount,
+  statusEVPoint,
+  statusCPID,
+  getChargingTariff,
+  getCPID,
+};

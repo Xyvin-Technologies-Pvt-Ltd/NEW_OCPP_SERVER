@@ -1,26 +1,33 @@
-const createError = require('http-errors')
-const logger = require('./loggerMiddleware') // Import the custom logging configuration
+const createError = require("http-errors");
+const logger = require("./loggerMiddleware");
 
-// Custom error-handling middleware
 const errorHandler = (err, req, res, next) => {
-  console.log(err)
   if (res.headersSent) {
-    return next(err)
+    return next(err);
   }
 
-  // Log the error to the console
+  logger.error(err.message || "Error", {
+    stack: process.env.NODE_ENV === "production" ? undefined : err.stack,
+    path: req.path,
+    method: req.method,
+    requestId: req.requestId,
+  });
 
-    logger.error(err)
+  const status =
+    typeof err.status === "number"
+      ? err.status
+      : typeof err.statusCode === "number"
+        ? err.statusCode
+        : 500;
 
-  // Handle specific error types
-  if (err instanceof createError.InternalServerError) {
-    res.status(500).json({ error: 'Internal Server Error' })
-  } else {
-    // Handle other errors with a generic response
-    res.status(err.status || 500).json({status:false, error: err.message })
-  }
-}
+  const code = status >= 500 ? "INTERNAL_ERROR" : "REQUEST_ERROR";
 
-//! In future seperate operation error vs development erro
+  res.status(status).json({
+    success: false,
+    message: status >= 500 ? "Something went wrong" : err.message,
+    error: { code },
+    requestId: req.requestId,
+  });
+};
 
-module.exports = errorHandler
+module.exports = errorHandler;

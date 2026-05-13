@@ -9,6 +9,10 @@ exports.getActiveSession = async (req, res, next) => {
     try {
         const userId = req.params.userId;
 
+        if (String(userId) !== String(req.userId)) {
+            return res.status(403).json({ success: false, message: 'Forbidden' });
+        }
+
         const ongoingTransaction = await OCPPTransaction.findOne({ user: userId, transaction_status: { $in: ["Progress", "Initiated"] } })
         if (!ongoingTransaction) {
             return res.status(400).json({ error: 'Ongoing transaction not found' });
@@ -135,6 +139,11 @@ exports.getActiveSession = async (req, res, next) => {
 exports.getChargingHistory = async (req, res, next) => {
     try {
         const userId = req.params.userId;
+
+        if (String(userId) !== String(req.userId)) {
+            return res.status(403).json({ success: false, message: 'Forbidden' });
+        }
+
         const fromDate = req.body.fromDate ? moment(req.body.fromDate, "DD-MM-YYYY").toDate() : ""
         let toDate = req.body.toDate ? moment(req.body.toDate, "DD-MM-YYYY").endOf('day').toDate() : "";
 

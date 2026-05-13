@@ -4,6 +4,8 @@ const remoteControllers = require('../controllers/remoteControllers')
 const mobileApis = require('../controllers/mobile-apis')
 const logController = require('../controllers/logController')
 const dashboardController = require('../controllers/dashboardController')
+const { validateBody } = require('../middlewares/validateRequest')
+const { dashboardTransactionListQuery } = require('../validation/ocppQuerySchemas')
 
 router.post('/ocpp/remoteStartTransaction/:evID', asyncHandler(remoteControllers.remoteStartTransaction))
 
@@ -43,7 +45,7 @@ router
     .get('/ocpp/dashboard/machineLog/:evMachine', asyncHandler(dashboardController.getMachineLogs))
     .get('/ocpp/dashboard/machineAlarms/:evMachine', asyncHandler(dashboardController.getMachineAlarms))
     .get('/ocpp/dashboard/machineAlarms', asyncHandler(dashboardController.getAllAlarms))
-    .get('/ocpp/dashboard/transactionList', asyncHandler(dashboardController.getOCPPTransaction))
+    .get('/ocpp/dashboard/transactionList', validateBody(dashboardTransactionListQuery, 'query'), asyncHandler(dashboardController.getOCPPTransaction))
     .get('/ocpp/dashboard/alarm/summary', asyncHandler(dashboardController.getAllAlarmsCount))
     .get('/ocpp/dashboard/analytics', asyncHandler(dashboardController.dashboardAnalytics))
     .get('/ocpp/dashboard/transaction/report', asyncHandler(dashboardController.getReport))

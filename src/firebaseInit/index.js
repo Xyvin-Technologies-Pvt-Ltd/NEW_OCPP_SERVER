@@ -1,10 +1,4 @@
-var firebase = require("firebase-admin");
+const { initFirebaseAdmin } = require("../utils/firebaseAdmin");
+const { firebase } = initFirebaseAdmin();
 
-var serviceAccount = require("./firebase.config.json");
-
-firebase.initializeApp({
-  credential: firebase.credential.cert(serviceAccount)
-});
-
-
-module.exports = {firebase}
+module.exports = { firebase };

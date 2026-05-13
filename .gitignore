@@ -39,3 +39,5 @@ yarn-error.log
 .serverless
 
 run.sh
+# Never commit Firebase JSON; use FIREBASE_CREDENTIAL_PATH or FIREBASE_SERVICE_ACCOUNT_JSON
+**/firebase.config.json

@@ -1,40 +1,16 @@
-require('winston-mongodb')
-const winston = require('winston')
-const { createLogger, format, transports } = winston
-const { combine, timestamp, label,  prettyPrint } = format
-const mongoose = require('mongoose');
+const winston = require("winston");
 
+const CATEGORY = "OCPP service";
 
-const dbName = process.env.DB_NAME || 'OXIUM_DB'
-const CATEGORY = 'OCPP service'
-
-let options = {
-  db: mongoose.connection.useDb(dbName),
-  options: {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  },
-  collection: "errorLogs",
-  capped: false,
-  expireAfterSeconds: 2592000,
-  leaveConnectionOpen: false,
-  storeHost: false,
-  label:`${CATEGORY}`
-  
-}
-
-
-
-const logger = createLogger({
-  level: 'info',
-  format: combine(
-    label({ label: CATEGORY }),
-    timestamp({
-      format: 'MMM-DD-YYYY HH:mm:ss',
-    }),
-    prettyPrint()
+const logger = winston.createLogger({
+  level: process.env.LOG_LEVEL || "info",
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.label({ label: CATEGORY }),
+    winston.format.json()
   ),
-  transports: [new transports.Console(), new transports.MongoDB(options)],
-})
+  defaultMeta: { service: CATEGORY },
+  transports: [new winston.transports.Console()],
+});
 
-module.exports = logger
+module.exports = logger;

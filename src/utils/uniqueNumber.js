@@ -1,17 +1,10 @@
-async function generateUniqueTransactionID(length) {
-    // Generate a random number (you can use a more sophisticated random number generator)
-    const randomNumber = Math.floor(Math.random() * 900000) + 100000;
+const crypto = require("crypto");
 
-  
-    // Append a timestamp to ensure uniqueness
-    const timestamp = Date.now();
-  
-    // Combine the random number and timestamp to create the transaction ID
-    const transactionID = `${randomNumber}${timestamp}`;
-  
-    return parseInt(transactionID.slice(0, length), 10); // Convert the ID to an integer
-  }
-  
+function generateUniqueTransactionID(length = 12) {
+  const len = Math.min(15, Math.max(6, Number(length) || 12));
+  const min = 10 ** (len - 1);
+  const max = Math.min(Number.MAX_SAFE_INTEGER, 10 ** len);
+  return crypto.randomInt(min, max);
+}
 
-
-  module.exports = {generateUniqueTransactionID}
+module.exports = { generateUniqueTransactionID };

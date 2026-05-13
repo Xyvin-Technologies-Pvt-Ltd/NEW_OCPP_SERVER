@@ -1,52 +1,38 @@
-const axios = require("axios"); // Import Axios for making HTTP requests
-require("dotenv").config();
+const axios = require("axios");
 const { axiosErrorHandler } = require("../utils/axiosErrorHandler");
-const { getSecret } = require('../config/env.config');
 const generateToken = require("../utils/generateToken");
 
 let NOTIFICATION_URL;
-let AUTH_SECRET='Nz9rG9y6dA3jT5wP8qZ4xW6sVeK2iS3uQ5oX8vC7bP';
 let token;
-const setURL = async () => {
-  let NOTIFICATION_SERVICE_URL;
+let configReady = false;
 
-  try {
-    if (process.env.NODE_ENV === "production") {
-      NOTIFICATION_SERVICE_URL = process.env.NOTIFICATION_SERVICE_URL || "http://13.203.2.34:5050";
-    } else {
-      const userUrlSecret = await getSecret();
-      NOTIFICATION_SERVICE_URL = userUrlSecret.NOTIFICATION_SERVICE_URL;
-      AUTH_SECRET = userUrlSecret.AUTH_SECRET;
-      token = await generateToken(AUTH_SECRET);
-    }
-    token = await generateToken(AUTH_SECRET);
-    NOTIFICATION_URL = `${NOTIFICATION_SERVICE_URL}/api/v1/notification`;
-  } catch (error) {
-    console.error("Error setting secrets:", error);
-    process.exit(1);
+async function ensureServiceConfig() {
+  if (configReady) return;
+  const base = process.env.NOTIFICATION_SERVICE_URL;
+  const payloadId = process.env.AUTH_SECRET;
+  if (!base || !payloadId) {
+    throw new Error("NOTIFICATION_SERVICE_URL and AUTH_SECRET are required");
   }
-};
-
+  NOTIFICATION_URL = `${base.replace(/\/+$/u, "")}/api/v1/notification`;
+  token = await generateToken(payloadId);
+  configReady = true;
+}
 
 const saveNotification = async (title, body, user) => {
   try {
-    await setURL();
-
+    await ensureServiceConfig();
     const response = await axios.post(
       `${NOTIFICATION_URL}/save`,
       { title, body, users: [user] },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
+      { headers: { Authorization: `Bearer ${token}` } }
     );
-
-    let res = response.data;
-    if (!res.status) throw new Error(`Some error from service connections/UnAuthorized`);
-    return res.status;
+    const result = response.data;
+    if (!result.status)
+      throw new Error("Notification service unauthorized or failed");
+    return result.status;
   } catch (error) {
-    axiosErrorHandler(error);
+    axiosErrorHandler(error, "saveNotification");
+    return false;
   }
 };
 

@@ -2,7 +2,8 @@
 const saveLogs = require('../../utils/saveLogs')
 const { statusCPID } = require('../../services/ev-machine-api')
 const lastHeartbeatTimestamps = new Map(); //to track latest heatbeat timestamp
-let TIMEOUT_INTERVAL = 100000;   // 100s
+/** Heartbeat timeout (ms): ~100s — CP considered offline if silent longer */
+const TIMEOUT_INTERVAL_MS = 100_000;
 let TIMEOUT_CHECK_INTERVAL = 60000;  // 1 min
 const moment = require('moment');
 const OCPPTransaction = require('../../models/ocppTransaction');
@@ -30,7 +31,7 @@ async function handleHeartbeat({ identity, params }) {
 setInterval(() => {
     const now = Date.now();
     for (const [identity, timestamp] of lastHeartbeatTimestamps.entries()) {
-        const timeoutThreshold = timestamp + TIMEOUT_INTERVAL;
+        const timeoutThreshold = timestamp + TIMEOUT_INTERVAL_MS;
         if (now > timeoutThreshold) {
             // Handle timeout for the Charge Point 
             handleTimeout(identity, timestamp);

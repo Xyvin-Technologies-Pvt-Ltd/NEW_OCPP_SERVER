@@ -52,7 +52,7 @@ async function initializeWebSocket(server) {
         // Set up a listener for the 'close' event to handle disconnections
         client.on("close", (data) => {
             console.log(`${client.session.sessionId} disconnected with code ${data.code} and reason: ${data.reason}`);
-            deleteClient(client);
+            deleteClient(client.identity);
         });
 
         // WebSocket handlers

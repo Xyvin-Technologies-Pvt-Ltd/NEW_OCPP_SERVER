@@ -1,18 +1,17 @@
 const jwt = require("jsonwebtoken");
-require("dotenv").config();
-const { getSecret } = require("../config/env.config");
 
-const generateToken = async (id) => {
-  let ACCESS_TOKEN_SECRET = 'OXIUM';
-  if (process.env.NODE_ENV === "production") {
-    ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET||'OXIUM';
-  } else {
-    const jwtSecret = await getSecret();
-    ACCESS_TOKEN_SECRET = jwtSecret.ACCESS_TOKEN_SECRET;
+/**
+ * Service JWT: payload `{ id }` signed with ACCESS_TOKEN_SECRET.
+ * Caller passes INTER_SERVICE_PAYLOAD_ID typically from AUTH_SECRET env.
+ */
+async function generateToken(payloadId) {
+  const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET;
+  if (!ACCESS_TOKEN_SECRET) {
+    throw new Error("ACCESS_TOKEN_SECRET is required");
   }
-  return jwt.sign({ id }, ACCESS_TOKEN_SECRET, {
+  return jwt.sign({ id: payloadId }, ACCESS_TOKEN_SECRET, {
     expiresIn: "1y",
   });
-};
+}
 
 module.exports = generateToken;
