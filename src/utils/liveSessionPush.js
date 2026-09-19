@@ -43,7 +43,7 @@ async function pushLiveSessionUpdate(transactionId, overrides = {}) {
 
   const result = {
     type: 'SoC',
-    percentage: String(percentage),
+    percentage: String(Math.round(Number(percentage) || 0)),
     unitUsed: Number(Number(unitUsed).toFixed(2)),
     balance: Number(Number(balance).toFixed(2)),
     status: overrides.status || 'Charging',
@@ -53,7 +53,7 @@ async function pushLiveSessionUpdate(transactionId, overrides = {}) {
   return true
 }
 
-async function pushTransactionStopped(transactionId, unitUsed) {
+async function pushTransactionStopped(transactionId, unitUsed, percentage) {
   const txnId = Number(transactionId)
   if (!txnId) return false
 
@@ -65,6 +65,9 @@ async function pushTransactionStopped(transactionId, unitUsed) {
 
   const payload = { type: 'Transaction Stopped' }
   if (unitUsed != null) payload.unitUsed = Number(Number(unitUsed).toFixed(2))
+  if (percentage != null && percentage !== '') {
+    payload.percentage = String(Math.round(Number(percentage)))
+  }
   mobileWs.send(JSON.stringify(payload))
   return true
 }

@@ -32,7 +32,9 @@ async function updateMeterAmount(transactionId, meterValue, actionType, currentS
   // Always sync final register on stop (even when delta is 0 or wallet bill failed)
   if (actionType === "stopTransaction") {
     let updateBody = { lastMeterValue: meterValue }
-    if (currentSoc) updateBody.currentSoc = currentSoc
+    if (currentSoc != null && currentSoc !== '') {
+      updateBody.currentSoc = Number(currentSoc)
+    }
     if (chargeSpeed) updateBody.chargeSpeed = chargeSpeed
 
     const update = { $set: updateBody }
@@ -43,20 +45,40 @@ async function updateMeterAmount(transactionId, meterValue, actionType, currentS
     return
   }
 
-  // Mid-session: only advance meter/billing state when wallet was charged for this delta
-  if (!userWalletUpdated) return
+  // Mid-session: always persist SoC / speed so stop snapshot is not stale.
+  // Only advance lastMeterValue + bill when wallet charged this delta.
+  if (totalAmount > 0 && !userWalletUpdated) {
+    // Wallet failed — still try to keep SoC fresh if provided
+    if (currentSoc != null && currentSoc !== '') {
+      await OCPPTransaction.updateOne(
+        { transactionId },
+        { $set: { currentSoc: Number(currentSoc) } }
+      )
+    }
+    return
+  }
 
-  let updateBody = { lastMeterValue: meterValue }
-  if (transactionData.transaction_status != "Completed") updateBody.transaction_status = "Progress"
+  let updateBody = {}
+  if (userWalletUpdated) {
+    updateBody.lastMeterValue = meterValue
+    if (transactionData.transaction_status != "Completed") {
+      updateBody.transaction_status = "Progress"
+    }
+  }
 
-  if (currentSoc) updateBody.currentSoc = currentSoc
-  if (!transactionData.startSoc && currentSoc) updateBody.startSoc = currentSoc
+  if (currentSoc != null && currentSoc !== '') {
+    updateBody.currentSoc = Number(currentSoc)
+    if (!transactionData.startSoc) updateBody.startSoc = Number(currentSoc)
+  }
   if (chargeSpeed) updateBody.chargeSpeed = chargeSpeed
 
-  await OCPPTransaction.updateOne({ transactionId }, {
-    $set: updateBody,
-    $inc: { totalAmount: totalAmount }
-  })
+  if (Object.keys(updateBody).length === 0) return
+
+  const update = { $set: updateBody }
+  if (userWalletUpdated && totalAmount > 0) {
+    update.$inc = { totalAmount: totalAmount }
+  }
+  await OCPPTransaction.updateOne({ transactionId }, update)
 }
 
 
