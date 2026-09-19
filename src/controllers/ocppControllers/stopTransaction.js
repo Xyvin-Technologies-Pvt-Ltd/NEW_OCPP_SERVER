@@ -2,26 +2,7 @@ const saveLogs = require('../../utils/saveLogs')
 const { updateTransactionLog } = require('../../utils/transactionLog')
 const { updateMeterAmount } = require('../../utils/updateMeter')
 const OCPPTransaction = require('../../models/ocppTransaction')
-const { pushLiveSessionUpdate, pushTransactionStopped } = require('../../utils/liveSessionPush')
-
-/** Pull SoC from StopTransaction.transactionData when the CP sends it. */
-function extractSocFromStopParams(params) {
-  try {
-    const blocks = params.transactionData
-    if (!Array.isArray(blocks)) return null
-    for (const block of blocks) {
-      const samples = block.sampledValue || []
-      for (const sample of samples) {
-        if (sample.measurand === 'SoC' && sample.value != null && sample.value !== '') {
-          return Number(sample.value)
-        }
-      }
-    }
-  } catch (error) {
-    console.log('extractSocFromStopParams error', error.message)
-  }
-  return null
-}
+const { pushTransactionStopped } = require('../../utils/liveSessionPush')
 
 
 
@@ -35,10 +16,8 @@ async function handleStopTransaction({ params, identity }) {
 
     await saveLogs(identity, messageType, params);
 
-    const stopSoc = extractSocFromStopParams(params)
-
-    // Bill any Wh after last MeterValues, sync lastMeterValue (+ SoC if present)
-    await updateMeterAmount(transactionId, meterValue, "stopTransaction", stopSoc)
+    // Bill any Wh after last MeterValues, sync lastMeterValue to meterStop
+    await updateMeterAmount(transactionId, meterValue, "stopTransaction")
     await updateTransactionLog(params);
 
     const transaction = await OCPPTransaction.findOne({ transactionId: Number(transactionId) })
@@ -46,17 +25,8 @@ async function handleStopTransaction({ params, identity }) {
       ? (params.meterStop - transaction.meterStart) / 1000
       : 0
 
-    const finalSoc = stopSoc != null
-      ? stopSoc
-      : (transaction?.currentSoc ?? 0)
-
-    // Final live snapshot first so the app applies kWh + SoC before disconnect
-    await pushLiveSessionUpdate(transactionId, {
-      unitUsed: finalUnitUsed,
-      percentage: finalSoc,
-      status: 'Charging',
-    })
-    await pushTransactionStopped(transactionId, finalUnitUsed, finalSoc)
+    // Final kWh only (no SoC/percentage sync on stop)
+    await pushTransactionStopped(transactionId, finalUnitUsed)
   } catch (error) {
     console.log('Stop Transaction Error :', error)
   }
