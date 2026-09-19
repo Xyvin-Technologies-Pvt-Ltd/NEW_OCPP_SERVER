@@ -3,11 +3,13 @@ const { remoteStopTransactionFunction } = require('../controllers/remoteControll
 const OCPPTransaction = require('../models/ocppTransaction')
 const { updateWalletTransaction } = require('../services/transaction-service-api')
 const { reduceMoneyFromWallet } = require('../services/user-service-api')
+const { applyServiceFeeOnce } = require('./applyServiceFee')
 
 
 async function updateMeterAmount(transactionId, meterValue, actionType, currentSoc, chargeSpeed) {
   let userWalletUpdated
   //get transaction details from db, which contains user, chargingTariff
+  // Incremental bill stays Δenergy × chargingTariff (energyRate). Service fee is once elsewhere.
   const transactionData = await OCPPTransaction.findOne({ transactionId })
   if (!transactionData) throw new Error(`Transaction with id ${transactionId} not found`)
   const lastMeterValue = transactionData.lastMeterValue
@@ -42,6 +44,11 @@ async function updateMeterAmount(transactionId, meterValue, actionType, currentS
     $set: updateBody,
     $inc: { totalAmount: totalAmount }
   })
+
+  // Retry one-time service fee if start-time wallet deduct failed (no-op when already applied / 0)
+  if (actionType === "meterValues" && !transactionData.serviceFeeApplied && Number(transactionData.serviceAmount) > 0) {
+    await applyServiceFeeOnce(transactionId)
+  }
 }
 
 

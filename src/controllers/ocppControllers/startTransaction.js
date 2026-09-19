@@ -5,13 +5,15 @@ const { getUserIdAndChargingTariff, getUserDeviceToken } = require('../../servic
 const { getChargingTariff } = require('../../services/ev-machine-api')
 const { saveTransactionLog } = require('../../utils/transactionLog')
 const { sendPushNotification } = require('../firebaseController')
+const { normalizeTariff } = require('../../utils/normalizeTariff')
+const { applyServiceFeeOnce } = require('../../utils/applyServiceFee')
 
 
 async function handleStartTransaction({ params, identity }) {
     try {
         console.log(`Server got StartTransaction Notification from ${identity}:`, params);
 
-        let chargingTariff, tax
+        let chargingTariff, tax, serviceAmount = 0, value
         const idTag = params.idTag;
         const messageType = 'StartTransaction';
         await saveLogs(identity, messageType, params);
@@ -21,24 +23,47 @@ async function handleStartTransaction({ params, identity }) {
         if (!userData) throw new Error('User data not found')
         const transactionMode = idTag.length < 11 ? 'mobile' : 'rfid';
 
-        if (userData.chargingTariff) {
-            chargingTariff = userData.chargingTariff
-            tax = userData.tax
+        // Prefer user tariff when present (same gate as before: chargingTariff).
+        // Also accept energyRate from new oxium payload.
+        if (userData.chargingTariff || userData.energyRate) {
+            const tariff = normalizeTariff(userData)
+            if (!tariff) throw new Error('Invalid user charging tariff')
+            chargingTariff = tariff.energyRate
+            tax = tariff.tax !== undefined ? tariff.tax : userData.tax
+            serviceAmount = tariff.serviceAmount
+            value = tariff.value
         }
         else {
             const chargingTariffResult = await getChargingTariff(identity)
             if (!chargingTariffResult.status) throw new Error('charging tariff data not found')
 
-            chargingTariff = chargingTariffResult.result.total
-            tax = chargingTariffResult.result.tax
+            const tariff = normalizeTariff(chargingTariffResult.result)
+            if (!tariff) throw new Error('Invalid EV charging tariff')
+            // Legacy EV path used result.total — normalizeTariff maps total → energyRate
+            chargingTariff = tariff.energyRate
+            tax = tariff.tax !== undefined ? tariff.tax : chargingTariffResult.result.tax
+            serviceAmount = tariff.serviceAmount
+            value = tariff.value
         }
 
         // const userId = isMongoId(idTag) ? idTag : await getUserId(params.idTag)
         const userId = userData._id
         try {
             let transaction_status = "Initiated"
-            await saveTransactionLog(identity, params, transaction_status, transactionId, chargingTariff, userId, tax, transactionMode);
+            await saveTransactionLog(
+                identity,
+                params,
+                transaction_status,
+                transactionId,
+                chargingTariff,
+                userId,
+                tax,
+                transactionMode,
+                { serviceAmount, value }
+            );
 
+            // Non-blocking for OCPP Accept: retry on meter/stop if wallet deduct fails
+            await applyServiceFeeOnce(transactionId)
         } catch (error) {
             console.log(' Error', error)
         }

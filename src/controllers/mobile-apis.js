@@ -89,16 +89,17 @@ exports.getActiveSession = async (req, res, next) => {
                                 serviceAmount: 1,
                                 tax_name: '$taxDetails.name',
                                 tax_percentage: '$taxDetails.percentage',
+                                // energyRate = value × (1 + tax%) — service fee is once, not in per-kWh rate
                                 charger_tariff: {
-                                    $add: [
-                                        { $add: ['$serviceAmount', '$value'] },
+                                    $multiply: [
+                                        '$value',
                                         {
-                                            $multiply: [
-                                                { $add: ['$serviceAmount', '$value'] },
+                                            $add: [
+                                                1,
                                                 { $divide: ['$taxDetails.percentage', 100] },
-
-                                            ]
-                                        }]
+                                            ],
+                                        },
+                                    ],
                                 }
                             }
                         }
@@ -275,6 +276,8 @@ exports.getInvoice = async (req, res, next) => {
                             $project: {
                                 username: 1,
                                 mobile: 1,
+                                email: 1,
+                                address: 1,
                             }
                         }
                     ],
@@ -312,6 +315,7 @@ exports.getInvoice = async (req, res, next) => {
                         {
                             $project: {
                                 name: 1,
+                                address: 1,
                             }
                         }
                     ],
@@ -340,27 +344,70 @@ exports.getInvoice = async (req, res, next) => {
         if (!transactionData) return res.status(400).json({ success: false, result: "", message: `Transaction not found` })
         if (transactionData.transaction_status !== "Completed") return res.status(400).json({ success: false, result: "", message: `Transaction not completed` })
 
-        let connectorFound = transactionData.connectorDetails[0].connectors.find(x => x.connectorId === transactionData.connectorId)
-        const energyConsumed = transactionData.meterStart && transactionData.lastMeterValue ? transactionData.lastMeterValue - (transactionData.meterStart / 1000) : ""
+        let connectorFound = transactionData.connectorDetails[0]?.connectors?.find(x => x.connectorId === transactionData.connectorId)
+        const energyValue = transactionData.meterStart && transactionData.lastMeterValue
+            ? Number(transactionData.lastMeterValue - (transactionData.meterStart / 1000))
+            : (transactionData.energyConsumed || 0)
+        const totalAmount = Number(transactionData.totalAmount) || 0
+        const energyRate = Number(transactionData.chargingTariff) || 0
+        const serviceAmount = Number(transactionData.serviceAmount) || 0
+        let taxRate = Number(transactionData.tax) || 0
+        if (taxRate > 1) taxRate = taxRate / 100
+
+        // New tariff (value / serviceAmount present): tax on energy only; service fee once.
+        // Legacy: keep previous invoice split from totalAmount.
+        const useNewTariff =
+            serviceAmount > 0 ||
+            (transactionData.value !== undefined && transactionData.value !== null && transactionData.value !== '')
+
+        let subtotal
+        let taxAmount
+        let displayTariff = energyRate
+
+        if (useNewTariff) {
+            const baseValue = Number.isFinite(Number(transactionData.value))
+                ? Number(transactionData.value)
+                : (taxRate > 0 ? energyRate / (1 + taxRate) : energyRate)
+            displayTariff = baseValue
+            subtotal = baseValue * energyValue
+            taxAmount = subtotal * taxRate
+        } else {
+            taxAmount = totalAmount * taxRate
+            subtotal = totalAmount - taxAmount
+        }
+
+        const invoiceDate = moment(transactionData.startTime)
         const transaction = {
             startTime: transactionData.startTime,
+            endTime: transactionData.endTime,
             transactionId: transactionData.transactionId,
-            energyConsumed: `${energyConsumed} kWh`,
-            tariff: transactionData.chargingTariff,
+            invoiceNo: `INV-${invoiceDate.format('YYYYMMDD')}-${String(transactionData.transactionId).padStart(5, '0')}`,
+            sessionId: `S-${invoiceDate.format('YYYYMMDD')}-${String(transactionData.transactionId).padStart(5, '0')}`,
+            energyValue,
+            energyConsumed: `${Number(energyValue).toFixed(2)} kWh`,
+            tariff: displayTariff,
+            energyRate,
+            serviceAmount,
             duration: timeDifference(transactionData.endTime, transactionData.startTime),
-            totalAmount: transactionData.totalAmount.toFixed(2),
-            taxRate: transactionData.tax,
-            taxAmount: transactionData.totalAmount * transactionData.tax,
-            totalAmountInWords: numberToWords(transactionData.totalAmount.toFixed(2)).toUpperCase(),
+            durationLabel: formatDurationLabel(transactionData.endTime, transactionData.startTime),
+            totalAmount: totalAmount.toFixed(2),
+            subtotal: subtotal.toFixed(2),
+            taxRate,
+            taxPercent: taxRate <= 1 ? taxRate * 100 : taxRate,
+            taxAmount: taxAmount.toFixed(2),
+            totalAmountInWords: numberToWords(totalAmount.toFixed(2)).toUpperCase(),
             paymentMethod: "Wallet",
             chargingStation: {
-                name: transactionData.chargingStation[0].name,
+                name: transactionData.chargingStation?.[0]?.name || "",
+                address: transactionData.chargingStation?.[0]?.address || "",
                 evMachineName: transactionData.cpid,
                 connectorType: connectorFound ? connectorFound.type : "",
             },
             user: {
-                name: transactionData.userDetails[0].username,
-                mobile: transactionData.userDetails[0].mobile,
+                name: transactionData.userDetails?.[0]?.username || "",
+                mobile: transactionData.userDetails?.[0]?.mobile || "",
+                email: transactionData.userDetails?.[0]?.email || "",
+                address: transactionData.userDetails?.[0]?.address || "",
             }
         }
 
@@ -526,6 +573,15 @@ function timeDifference(date1, date2) {
     seconds = seconds.toString().padStart(2, '0');
 
     return `${hours}:${minutes}:${seconds}`;
+}
+
+function formatDurationLabel(date1, date2) {
+    if (!date1 || !date2) return '0 hrs 0 min';
+    const diff = Math.max(0, date1 - date2);
+    const totalMinutes = Math.floor(diff / 60000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${hours} hrs ${minutes} min`;
 }
 
 function numberToWords(num) {
