@@ -21,9 +21,9 @@ const COLORS = {
 const COMPANY = {
   name: 'GO E.C. MERCANTILE PRIVATE LIMITED',
   address: '34/1000, Kathmandu, Central Region, Nepal',
-  phone: '+977 98000 00000',
-  email: 'support@goec.com',
-  website: 'www.goec.com',
+  phone: '+977 976-2117084',
+  email: 'info@goec.com.np',
+  website: 'www.goecm.com.np',
   tagline: 'DRIVE CLEANER TOMORROW',
 };
 
@@ -79,12 +79,46 @@ function drawVerticalSlogan(doc, x, startY, options = {}) {
 }
 
 function drawLabelValue(doc, label, value, x, y, valueMaxWidth) {
+  const text = safeText(value);
   doc.fillColor(COLORS.muted).font('Helvetica').fontSize(8);
   const labelText = `${label} : `;
-  drawText(doc, labelText, x, y);
   const labelWidth = doc.widthOfString(labelText);
+  drawText(doc, labelText, x, y);
+
+  const valueWidth = Math.max(24, valueMaxWidth - labelWidth);
   doc.fillColor(COLORS.text).font('Helvetica-Bold').fontSize(8);
-  drawText(doc, safeText(value), x + labelWidth, y, { width: valueMaxWidth - labelWidth });
+  const valueHeight = doc.heightOfString(text, { width: valueWidth, lineGap: 1.5 });
+
+  // Allow wrapping for long values (address, etc.) without advancing PDFKit flow
+  const prevX = doc.x;
+  const prevY = doc.y;
+  doc.text(text, x + labelWidth, y, {
+    width: valueWidth,
+    lineGap: 1.5,
+    lineBreak: true,
+  });
+  doc.x = prevX;
+  doc.y = prevY;
+
+  return Math.max(11, valueHeight);
+}
+
+function measureLabelValueHeight(doc, label, value, valueMaxWidth) {
+  const text = safeText(value);
+  doc.font('Helvetica').fontSize(8);
+  const labelWidth = doc.widthOfString(`${label} : `);
+  const valueWidth = Math.max(24, valueMaxWidth - labelWidth);
+  doc.font('Helvetica-Bold').fontSize(8);
+  return Math.max(11, doc.heightOfString(text, { width: valueWidth, lineGap: 1.5 }));
+}
+
+function measureInfoBoxHeight(doc, width, fields) {
+  const contentWidth = width - 28;
+  let height = 32; // title area
+  fields.forEach(([label, value]) => {
+    height += measureLabelValueHeight(doc, label, value, contentWidth) + 4;
+  });
+  return height + 10; // bottom padding
 }
 
 function drawFooterIcon(doc, type, x, y) {
@@ -237,21 +271,28 @@ exports.generatePdf = (transactionData, callback) => {
   y = row2Y + 85;
   const boxGap = 14;
   const boxWidth = (contentWidth - boxGap) / 2;
-  const boxHeight = 102;
 
-  drawInfoBox(doc, left, y, boxWidth, boxHeight, 'BILL TO', [
+  const billToFields = [
     ['Name', safeText(transactionData.user?.name)],
     ['Email', safeText(transactionData.user?.email)],
     ['Phone', transactionData.user?.mobile ? `+977 ${transactionData.user.mobile}` : '-'],
     ['Address', safeText(transactionData.user?.address)],
-  ]);
-
-  drawInfoBox(doc, left + boxWidth + boxGap, y, boxWidth, boxHeight, 'CHARGING STATION', [
+  ];
+  const stationFields = [
     ['Station Name', safeText(transactionData.chargingStation?.name)],
     ['Address', safeText(transactionData.chargingStation?.address)],
     ['CP ID', safeText(transactionData.chargingStation?.evMachineName)],
     ['Connector Type', safeText(transactionData.chargingStation?.connectorType)],
-  ]);
+  ];
+
+  const boxHeight = Math.max(
+    measureInfoBoxHeight(doc, boxWidth, billToFields),
+    measureInfoBoxHeight(doc, boxWidth, stationFields),
+    102
+  );
+
+  drawInfoBox(doc, left, y, boxWidth, boxHeight, 'BILL TO', billToFields);
+  drawInfoBox(doc, left + boxWidth + boxGap, y, boxWidth, boxHeight, 'CHARGING STATION', stationFields);
 
   // ========== SESSION DETAILS ==========
   y += boxHeight + 14;
@@ -293,7 +334,6 @@ exports.generatePdf = (transactionData, callback) => {
   const totalAmount = Number(transactionData.totalAmount) || 0;
   const serviceAmount = Number(transactionData.serviceAmount) || 0;
   const energyAmount = energyCharge > 0 ? energyCharge : subtotal;
-  const displaySubtotal = energyAmount;
 
   const tableTop = y;
   const rowHeight = 28;
@@ -352,21 +392,8 @@ exports.generatePdf = (transactionData, callback) => {
     .stroke()
     .restore();
 
-  // Subtotal / Tax — Figma: label on LEFT (first), amount on RIGHT
-  y += 14;
-  doc.fillColor(COLORS.muted).font('Helvetica').fontSize(9);
-  drawText(doc, 'Subtotal', left + 8, y);
-  doc.fillColor(COLORS.text).font('Helvetica-Bold').fontSize(9);
-  drawText(doc, formatCurrency(displaySubtotal), right - 110, y, { width: 110, align: 'right' });
-
+  // Total bar (table already shows Energy / Tax / Service Fee — no Subtotal/Tax summary)
   y += 16;
-  doc.fillColor(COLORS.muted).font('Helvetica').fontSize(9);
-  drawText(doc, `Tax (${taxPercent}%)`, left + 8, y);
-  doc.fillColor(COLORS.text).font('Helvetica-Bold').fontSize(9);
-  drawText(doc, formatCurrency(taxAmount), right - 110, y, { width: 110, align: 'right' });
-
-  // Total bar
-  y += 20;
   doc.save().fillColor(COLORS.primary).roundedRect(left, y, contentWidth, 38, 6).fill().restore();
   doc.fillColor(COLORS.white).font('Helvetica-Bold').fontSize(12);
   drawText(doc, 'Total Amount', left + 16, y + 12);
@@ -377,7 +404,7 @@ exports.generatePdf = (transactionData, callback) => {
   y += 50;
   doc.save().fillColor(COLORS.softBlue).roundedRect(left, y, contentWidth, 44, 8).fill().restore();
   doc.fillColor(COLORS.primary).font('Helvetica-Bold').fontSize(10);
-  drawText(doc, 'Thank you for choosing GOEC!', left + 14, y + 11);
+  drawText(doc, 'Thank you for choosing GOECM!', left + 14, y + 11);
   doc.fillColor(COLORS.muted).font('Helvetica').fontSize(8);
   drawText(doc, 'Together for a cleaner and greener tomorrow.', left + 14, y + 26);
 
@@ -451,8 +478,9 @@ function drawInfoBox(doc, x, y, width, height, title, fields) {
   drawText(doc, title, x + 14, y + 12);
 
   let fieldY = y + 32;
+  const contentWidth = width - 28;
   fields.forEach(([label, value]) => {
-    drawLabelValue(doc, label, value, x + 14, fieldY, width - 28);
-    fieldY += 15;
+    const usedHeight = drawLabelValue(doc, label, value, x + 14, fieldY, contentWidth);
+    fieldY += usedHeight + 4;
   });
 }
