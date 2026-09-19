@@ -7,6 +7,7 @@ const { saveTransactionLog } = require('../../utils/transactionLog')
 const { sendPushNotification } = require('../firebaseController')
 const { normalizeTariff } = require('../../utils/normalizeTariff')
 const { applyServiceFeeOnce } = require('../../utils/applyServiceFee')
+const { pushLiveSessionUpdate } = require('../../utils/liveSessionPush')
 
 
 async function handleStartTransaction({ params, identity }) {
@@ -71,6 +72,18 @@ async function handleStartTransaction({ params, identity }) {
 
 
         if (transactionId) {
+
+            // Initial live snapshot (unitUsed 0). Often WS is not connected yet;
+            // appWs also pushes on connect so the app does not wait for first MeterValues.
+            try {
+                await pushLiveSessionUpdate(transactionId, {
+                    unitUsed: 0,
+                    percentage: 0,
+                    status: 'Charging',
+                })
+            } catch (error) {
+                console.log('StartTransaction live push error', error.message)
+            }
 
             let payload = {
                 title: 'Transaction Started',
