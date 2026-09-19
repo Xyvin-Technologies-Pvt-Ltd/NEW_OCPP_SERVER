@@ -1,7 +1,5 @@
-const { deleteMobileClient, getMobileClient } = require('../middlewares/clientsManager');
 const { authenticateUserByUserId } = require('../services/user-service-api');
 const sendMessageToClient = require('./cmsToCp');
-const { remoteStopTransactionFunction } = require('./remoteControllerUtils');
 
 
 exports.remoteStartTransaction = async (req, res, next) => {
@@ -28,18 +26,11 @@ exports.remoteStopTransaction = async (req, res, next) => {
     const evID = req.params.evID;
     const messageType = 'RemoteStopTransaction';
     const payload = { transactionId: Number(req.body.transactionId) }
-    const mobClient = req.body.transactionId;
 
     try {
+        // Only tell the charger to stop. Keep mobile WS open so StopTransaction
+        // can push final unitUsed (meterStop − meterStart) before disconnect.
         await sendMessageToClient(evID, messageType, payload)
-        const mobileWs = await getMobileClient(mobClient)
-        if (mobileWs) {
-            mobileWs.send(JSON.stringify({ type: 'transactionStop' }));
-            mobileWs.close();
-            deleteMobileClient(mobClient)
-        } else {
-        }
-        //test
         res.status(200).json({ status: true, message: `${messageType} command set` })
 
     } catch (error) {

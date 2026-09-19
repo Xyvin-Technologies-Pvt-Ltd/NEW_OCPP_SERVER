@@ -1,7 +1,8 @@
-const { getMobileClient } = require('../../middlewares/clientsManager');
 const saveLogs = require('../../utils/saveLogs')
 const { updateTransactionLog } = require('../../utils/transactionLog')
 const { updateMeterAmount } = require('../../utils/updateMeter')
+const OCPPTransaction = require('../../models/ocppTransaction')
+const { pushLiveSessionUpdate, pushTransactionStopped } = require('../../utils/liveSessionPush')
 
 
 
@@ -10,23 +11,27 @@ async function handleStopTransaction({ params, identity }) {
 
   let messageType = 'StopTransaction';
   const transactionId = params.transactionId
-  const meterValue = params.meterStop / 1000 //meter value in Wh so /1000 to convert it to kWh
+  const meterValue = params.meterStop / 1000 // meterStop is Wh → kWh
   try {
 
     await saveLogs(identity, messageType, params);
 
+    // Bill any Wh after last MeterValues, sync lastMeterValue to meterStop
     await updateMeterAmount(transactionId, meterValue, "stopTransaction")
     await updateTransactionLog(params);
 
-    const mobileClient = transactionId.toString()
-    const mobileWs = await getMobileClient(mobileClient);
-    
-    if (mobileWs) {
-      let result = { type: 'Transaction Stopped'}
-      mobileWs.send(JSON.stringify(result));
-  } else {
-      console.log('Client Not Found', mobileClient)
-  }
+    const transaction = await OCPPTransaction.findOne({ transactionId: Number(transactionId) })
+    const finalUnitUsed = transaction && transaction.meterStart != null
+      ? (params.meterStop - transaction.meterStart) / 1000
+      : 0
+
+    // Final live snapshot first so the app applies kWh before disconnect
+    await pushLiveSessionUpdate(transactionId, {
+      unitUsed: finalUnitUsed,
+      percentage: transaction?.currentSoc ?? 0,
+      status: 'Charging',
+    })
+    await pushTransactionStopped(transactionId, finalUnitUsed)
   } catch (error) {
     console.log('Stop Transaction Error :', error)
   }

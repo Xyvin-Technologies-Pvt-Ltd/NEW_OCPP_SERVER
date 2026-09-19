@@ -137,10 +137,12 @@ exports.getChargingHistory = async (req, res, next) => {
         const userId = req.params.userId;
         const fromDate = req.body.fromDate ? moment(req.body.fromDate, "DD-MM-YYYY").toDate() : ""
         let toDate = req.body.toDate ? moment(req.body.toDate, "DD-MM-YYYY").endOf('day').toDate() : "";
+        const status = req.body.status || req.query.status;
 
         let filters = { user: new mongoose.Types.ObjectId(userId) }
 
         if (fromDate && toDate) filters.startTime = { $gte: fromDate, $lt: toDate }
+        if (status) filters.transaction_status = status
 
         const pageNo  = req.query.pageNo || req.body.pageNo;
 
