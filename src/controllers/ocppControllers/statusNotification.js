@@ -2,6 +2,7 @@
 
 const saveLogs = require('../../utils/saveLogs')
 const { statusEVPoint } = require('../../services/ev-machine-api')
+const { closeOpenTransactions } = require('../../utils/closeOpenTransactions')
 
 
 async function handleStatusNotification({ params, identity }) {
@@ -13,6 +14,25 @@ async function handleStatusNotification({ params, identity }) {
 
     try {
         const status = await statusEVPoint(cpid, params)
+
+        // When the gun goes idle, close any open OCPP txs for that connector
+        // so activeSession does not keep returning a dead Progress session.
+        const connectorStatus = params && params.status;
+        const connectorId = params && params.connectorId;
+        if (
+            connectorId != null &&
+            ['Available', 'Finishing', 'Faulted', 'Unavailable'].includes(connectorStatus)
+        ) {
+            try {
+                await closeOpenTransactions(
+                    { cpid, connectorId: Number(connectorId) },
+                    `StatusNotification:${connectorStatus}`,
+                    ['Initiated', 'Progress']
+                );
+            } catch (e) {
+                console.log('closeOpenTransactions on StatusNotification:', e.message);
+            }
+        }
 
         if (status) {
             return {
@@ -27,7 +47,6 @@ async function handleStatusNotification({ params, identity }) {
                 },
             };
         }
-
     } catch (error) {
         console.log(error)
         return {

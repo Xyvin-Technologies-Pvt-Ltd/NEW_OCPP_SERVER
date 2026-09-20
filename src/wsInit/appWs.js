@@ -39,8 +39,9 @@ async function initializeMobileSocket() {
                     transaction_status: { $in: ['Initiated', 'Progress'] },
                 })
                 if (ongoing) {
+                    // Energy/balance only — do not force status (avoids Initiated/Charging UI glitches)
                     await pushLiveSessionUpdate(txnId, {
-                        status: 'Charging',
+                        skipStatus: true,
                     })
                 }
             }

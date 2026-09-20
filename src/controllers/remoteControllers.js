@@ -1,5 +1,9 @@
-const { authenticateUserByUserId } = require('../services/user-service-api');
+const { authenticateUserByUserId, getUserIdAndChargingTariff } = require('../services/user-service-api');
 const sendMessageToClient = require('./cmsToCp');
+const {
+    closeTransactionById,
+    closeOpenTransactionsForUser,
+} = require('../utils/closeOpenTransactions');
 
 
 exports.remoteStartTransaction = async (req, res, next) => {
@@ -12,6 +16,21 @@ exports.remoteStartTransaction = async (req, res, next) => {
     try {
         let isAuthenticated = await authenticateUserByUserId(req.body.idTag)
         if (!isAuthenticated) return res.status(400).json({ success: false, message: `Authentication failed - no money` })
+
+        // Only clear stuck Initiated rows — never kill an in-progress charge
+        // so the user can RemoteStart another connector in parallel.
+        try {
+            const userData = await getUserIdAndChargingTariff(req.body.idTag)
+            if (userData && userData._id) {
+                await closeOpenTransactionsForUser(
+                    userData._id,
+                    'ClearedStaleInitiated',
+                    ['Initiated']
+                )
+            }
+        } catch (e) {
+            console.log('remoteStart stale-session cleanup:', e.message)
+        }
 
         await sendMessageToClient(evID, messageType, payLoad)
         res.status(200).json({ status: true, message: `${messageType} command set` })
@@ -28,9 +47,18 @@ exports.remoteStopTransaction = async (req, res, next) => {
     const payload = { transactionId: Number(req.body.transactionId) }
 
     try {
-        // Only tell the charger to stop. Keep mobile WS open so StopTransaction
-        // can push final unitUsed + SoC before disconnect.
-        await sendMessageToClient(evID, messageType, payload)
+        // Tell the charger to stop when possible (may Reject if never started).
+        try {
+            await sendMessageToClient(evID, messageType, payload)
+        } catch (e) {
+            console.log('remoteStop charger call:', e.message)
+        }
+
+        // Always close the DB session so the app is not blocked on "active session"
+        if (payload.transactionId) {
+            await closeTransactionById(payload.transactionId, 'RemoteStop')
+        }
+
         res.status(200).json({ status: true, message: `${messageType} command set` })
 
     } catch (error) {

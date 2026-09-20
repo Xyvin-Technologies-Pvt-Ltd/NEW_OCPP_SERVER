@@ -78,8 +78,8 @@ async function handleStartTransaction({ params, identity }) {
             try {
                 await pushLiveSessionUpdate(transactionId, {
                     unitUsed: 0,
-                    percentage: 0,
-                    status: 'Charging',
+                    skipPercentage: true,
+                    skipStatus: true,
                 })
             } catch (error) {
                 console.log('StartTransaction live push error', error.message)

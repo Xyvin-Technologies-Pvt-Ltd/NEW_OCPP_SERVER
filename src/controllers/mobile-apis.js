@@ -3,16 +3,81 @@ const moment = require('moment')
 const momentTimezone = require('moment-timezone');
 const mongoose = require('mongoose')
 const { generatePdf } = require('../utils/generatePdf');
+const { closeTransactionById, closeOpenTransactionsForUser } = require('../utils/closeOpenTransactions');
+
+/** Close Progress/Initiated if the EV connector is no longer charging. */
+async function _closeIfConnectorIdle(txn) {
+    try {
+        const machine = await mongoose.connection.db
+            .collection('evmachines')
+            .findOne({ CPID: txn.cpid }, { projection: { connectors: 1 } });
+        if (!machine || !Array.isArray(machine.connectors)) return false;
+
+        const conn = machine.connectors.find(
+            (c) => Number(c.connectorId) === Number(txn.connectorId)
+        );
+        if (!conn) return false;
+
+        const status = String(conn.status || '');
+        const chargingLike = ['Charging', 'SuspendedEVSE', 'SuspendedEV'];
+        const preparingLike = ['Preparing'];
+
+        // Still charging (or suspended mid-session)
+        if (chargingLike.includes(status)) return false;
+        // RemoteStart accepted, waiting for cable
+        if (txn.transaction_status === 'Initiated' && preparingLike.includes(status)) {
+            return false;
+        }
+
+        await closeTransactionById(txn.transactionId, 'OrphanConnectorIdle');
+        console.log(
+            `Closed orphan txn ${txn.transactionId} — connector ${txn.cpid}/${txn.connectorId} is ${status}`
+        );
+        return true;
+    } catch (e) {
+        console.log('_closeIfConnectorIdle error:', e.message);
+        return false;
+    }
+}
 
 //!ASHIN SSS
 exports.getActiveSession = async (req, res, next) => {
     try {
         const userId = req.params.userId;
+        const filter = {
+            user: userId,
+            transaction_status: { $in: ["Progress", "Initiated"] },
+        };
 
-        const ongoingTransaction = await OCPPTransaction.findOne({ user: userId, transaction_status: { $in: ["Progress", "Initiated"] } })
+        // Optional: target a specific charger/gun (multi-session support)
+        if (req.query.cpid) filter.cpid = String(req.query.cpid);
+        if (req.query.connectorId != null && req.query.connectorId !== '') {
+            const cid = Number(req.query.connectorId);
+            filter.connectorId = Number.isFinite(cid) ? cid : req.query.connectorId;
+        }
+
+        // Prefer the newest session when multiple are open
+        let ongoingTransaction = await OCPPTransaction.findOne(filter).sort({
+            startTime: -1,
+        });
         if (!ongoingTransaction) {
             return res.status(400).json({ error: 'Ongoing transaction not found' });
         }
+
+        // Drop orphaned DB rows when the connector is no longer actively charging
+        // (e.g. simulator Available but transaction still Progress).
+        const orphaned = await _closeIfConnectorIdle(ongoingTransaction);
+        if (orphaned) {
+            return res.status(400).json({ error: 'Ongoing transaction not found' });
+        }
+
+        // Re-fetch in case we need latest after concurrent updates
+        ongoingTransaction = await OCPPTransaction.findById(ongoingTransaction._id);
+        if (!ongoingTransaction ||
+            !['Progress', 'Initiated'].includes(ongoingTransaction.transaction_status)) {
+            return res.status(400).json({ error: 'Ongoing transaction not found' });
+        }
+
         let unitsUsed = 0
         if (ongoingTransaction) unitsUsed = ongoingTransaction.meterStart ? ongoingTransaction.lastMeterValue - (ongoingTransaction.meterStart / 1000) : ongoingTransaction.lastMeterValue //meterStart is in wh format and lastMeterValue is in kWh format 
 
@@ -33,7 +98,7 @@ exports.getActiveSession = async (req, res, next) => {
                                 CPID: 1,
                                 chargingTariff: 1,
                                 location_name: 1,
-
+                                connectors: 1,
                             }
                         }
                     ],
@@ -128,6 +193,28 @@ exports.getActiveSession = async (req, res, next) => {
         res.status(200).json({ success: true, result: result, message: `Ok` })
     }
     catch (error) {
+        next(error);
+    }
+}
+
+/** Close stuck Initiated sessions. Pass statuses including Progress to force. */
+exports.abandonActiveSession = async (req, res, next) => {
+    try {
+        const userId = req.params.userId;
+        const force = req.body?.force === true || req.query?.force === 'true';
+        const statuses = force ? ['Initiated', 'Progress'] : ['Initiated'];
+        const result = await closeOpenTransactionsForUser(
+            userId,
+            force ? 'AbandonedForNewStart' : 'AbandonedByUser',
+            statuses
+        );
+        res.status(200).json({
+            status: true,
+            success: true,
+            modifiedCount: result.modifiedCount || 0,
+            message: 'Active session cleared',
+        });
+    } catch (error) {
         next(error);
     }
 }

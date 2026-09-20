@@ -33,6 +33,7 @@ router.get('/ocpp/logs/:evID', asyncHandler(logController.getOCPPLogs))
 //!new
 router
     .get('/ocpp/activeSession/:userId', asyncHandler(mobileApis.getActiveSession))
+    .post('/ocpp/abandonActiveSession/:userId', asyncHandler(mobileApis.abandonActiveSession))
     .get('/ocpp/dashboard/activeSession', asyncHandler(mobileApis.getActiveSessionDashboard))
     .post('/ocpp/chargingHistory/:userId', asyncHandler(mobileApis.getChargingHistory))
     .get('/ocpp/invoice/:transactionId', asyncHandler(mobileApis.getInvoice))

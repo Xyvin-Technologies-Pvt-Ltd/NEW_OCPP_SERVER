@@ -2,7 +2,7 @@ const saveLogs = require('../../utils/saveLogs')
 const { updateTransactionLog } = require('../../utils/transactionLog')
 const { updateMeterAmount } = require('../../utils/updateMeter')
 const OCPPTransaction = require('../../models/ocppTransaction')
-const { pushTransactionStopped } = require('../../utils/liveSessionPush')
+const { pushLiveSessionUpdate, pushTransactionStopped } = require('../../utils/liveSessionPush')
 
 
 
@@ -25,7 +25,13 @@ async function handleStopTransaction({ params, identity }) {
       ? (params.meterStop - transaction.meterStart) / 1000
       : 0
 
-    // Final kWh only (no SoC/percentage sync on stop)
+    // Final kWh via SoC-type message with status Disconnected (not Charging —
+    // Charging revived the progress UI after 1s). Then explicit stop event.
+    await pushLiveSessionUpdate(transactionId, {
+      unitUsed: finalUnitUsed,
+      skipPercentage: true,
+      status: 'Disconnected',
+    })
     await pushTransactionStopped(transactionId, finalUnitUsed)
   } catch (error) {
     console.log('Stop Transaction Error :', error)

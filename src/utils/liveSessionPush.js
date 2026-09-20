@@ -37,16 +37,23 @@ async function pushLiveSessionUpdate(transactionId, overrides = {}) {
     }
   }
 
-  const percentage = overrides.percentage != null
-    ? overrides.percentage
-    : (transaction.currentSoc ?? 0)
-
   const result = {
     type: 'SoC',
-    percentage: String(percentage),
     unitUsed: Number(Number(unitUsed).toFixed(2)),
     balance: Number(Number(balance).toFixed(2)),
-    status: overrides.status || 'Charging',
+  }
+
+  // Only include percentage when explicitly wanted (mid-session).
+  // On stop / start bootstrap we omit it so the app keeps last live SoC.
+  if (!overrides.skipPercentage) {
+    const percentage = overrides.percentage != null
+      ? overrides.percentage
+      : (transaction.currentSoc ?? 0)
+    result.percentage = String(percentage)
+  }
+
+  if (!overrides.skipStatus) {
+    result.status = overrides.status || 'Charging'
   }
 
   mobileWs.send(JSON.stringify(result))
