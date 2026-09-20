@@ -1,9 +1,6 @@
 const { authenticateUserByUserId, getUserIdAndChargingTariff } = require('../services/user-service-api');
 const sendMessageToClient = require('./cmsToCp');
-const {
-    closeTransactionById,
-    closeOpenTransactionsForUser,
-} = require('../utils/closeOpenTransactions');
+const { closeOpenTransactionsForUser } = require('../utils/closeOpenTransactions');
 
 
 exports.remoteStartTransaction = async (req, res, next) => {
@@ -17,8 +14,7 @@ exports.remoteStartTransaction = async (req, res, next) => {
         let isAuthenticated = await authenticateUserByUserId(req.body.idTag)
         if (!isAuthenticated) return res.status(400).json({ success: false, message: `Authentication failed - no money` })
 
-        // Only clear stuck Initiated rows — never kill an in-progress charge
-        // so the user can RemoteStart another connector in parallel.
+        // Safe: clear stuck Initiated only (never Progress / live charging)
         try {
             const userData = await getUserIdAndChargingTariff(req.body.idTag)
             if (userData && userData._id) {
@@ -47,18 +43,10 @@ exports.remoteStopTransaction = async (req, res, next) => {
     const payload = { transactionId: Number(req.body.transactionId) }
 
     try {
-        // Tell the charger to stop when possible (may Reject if never started).
-        try {
-            await sendMessageToClient(evID, messageType, payload)
-        } catch (e) {
-            console.log('remoteStop charger call:', e.message)
-        }
-
-        // Always close the DB session so the app is not blocked on "active session"
-        if (payload.transactionId) {
-            await closeTransactionById(payload.transactionId, 'RemoteStop')
-        }
-
+        // Production-safe: only tell the charger to stop.
+        // Do NOT mark DB Completed here — wait for StopTransaction so final
+        // meter / wallet billing stay correct.
+        await sendMessageToClient(evID, messageType, payload)
         res.status(200).json({ status: true, message: `${messageType} command set` })
 
     } catch (error) {

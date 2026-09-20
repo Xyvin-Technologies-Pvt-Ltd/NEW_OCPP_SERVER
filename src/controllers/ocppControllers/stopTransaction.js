@@ -4,29 +4,74 @@ const { updateMeterAmount } = require('../../utils/updateMeter')
 const OCPPTransaction = require('../../models/ocppTransaction')
 const { pushLiveSessionUpdate, pushTransactionStopped } = require('../../utils/liveSessionPush')
 
-
-
+/**
+ * Charger confirmed stop. DB must become Completed even if wallet/WS push fails,
+ * otherwise activeSession keeps returning a ghost Progress session forever.
+ */
 async function handleStopTransaction({ params, identity }) {
   console.log(`Server got StopTransaction Notification from ${identity}:`, params);
 
-  let messageType = 'StopTransaction';
+  const messageType = 'StopTransaction'
   const transactionId = params.transactionId
   const meterValue = params.meterStop / 1000 // meterStop is Wh → kWh
+
+  await saveLogs(identity, messageType, params).catch((e) =>
+    console.log('StopTransaction saveLogs error:', e.message)
+  )
+
+  // 1) Final meter / wallet delta (best effort)
   try {
+    await updateMeterAmount(transactionId, meterValue, 'stopTransaction')
+  } catch (error) {
+    console.log('StopTransaction updateMeterAmount error:', error.message)
+  }
 
-    await saveLogs(identity, messageType, params);
+  // 2) Mark Completed via normal stop path (wallet/user side-effects)
+  try {
+    await updateTransactionLog(params)
+  } catch (error) {
+    // updateTransactionLog often swallows errors internally — still guarantee below
+    console.log('StopTransaction updateTransactionLog error:', error.message)
+  }
 
-    // Bill any Wh after last MeterValues, sync lastMeterValue to meterStop
-    await updateMeterAmount(transactionId, meterValue, "stopTransaction")
-    await updateTransactionLog(params);
+  // 3) Guarantee Completed even if updateTransactionLog no-op'd / swallowed errors.
+  // Idempotent: only touches Initiated|Progress. This is what stops ghost activeSession.
+  try {
+    const forced = await OCPPTransaction.findOneAndUpdate(
+      {
+        transactionId: Number(transactionId),
+        transaction_status: { $in: ['Initiated', 'Progress'] },
+      },
+      {
+        $set: {
+          transaction_status: 'Completed',
+          endTime: new Date(),
+          meterStop: params.meterStop,
+          closureReason: params.reason || 'StopTransaction',
+          closeBy: 'charger',
+        },
+      },
+      { new: true }
+    )
+    if (forced) {
+      console.log(
+        `StopTransaction ensured Completed for txn ${transactionId}`
+      )
+    }
+  } catch (e2) {
+    console.log('StopTransaction ensure-Complete error:', e2.message)
+  }
 
-    const transaction = await OCPPTransaction.findOne({ transactionId: Number(transactionId) })
-    const finalUnitUsed = transaction && transaction.meterStart != null
-      ? (params.meterStop - transaction.meterStart) / 1000
-      : 0
+  // 4) Notify mobile app (best effort — must not block completion)
+  try {
+    const transaction = await OCPPTransaction.findOne({
+      transactionId: Number(transactionId),
+    })
+    const finalUnitUsed =
+      transaction && transaction.meterStart != null
+        ? (params.meterStop - transaction.meterStart) / 1000
+        : 0
 
-    // Final kWh via SoC-type message with status Disconnected (not Charging —
-    // Charging revived the progress UI after 1s). Then explicit stop event.
     await pushLiveSessionUpdate(transactionId, {
       unitUsed: finalUnitUsed,
       skipPercentage: true,
@@ -34,27 +79,19 @@ async function handleStopTransaction({ params, identity }) {
     })
     await pushTransactionStopped(transactionId, finalUnitUsed)
   } catch (error) {
-    console.log('Stop Transaction Error :', error)
+    console.log('StopTransaction live push error:', error.message)
   }
 
   if (transactionId) {
     return {
       transactionId,
-      idTagInfo: {
-        status: "Accepted",
-      },
-    };
-  } else {
-    return {
-      transactionId: 0,
-      idTagInfo: {
-        status: "Invalid",
-      },
-    };
+      idTagInfo: { status: 'Accepted' },
+    }
   }
-
-
+  return {
+    transactionId: 0,
+    idTagInfo: { status: 'Invalid' },
+  }
 }
-
 
 module.exports = { handleStopTransaction }
