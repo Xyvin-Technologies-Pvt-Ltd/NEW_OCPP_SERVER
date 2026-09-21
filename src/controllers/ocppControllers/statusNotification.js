@@ -1,6 +1,7 @@
 
 const saveLogs = require('../../utils/saveLogs')
 const { statusEVPoint } = require('../../services/ev-machine-api')
+const { finalizeRequestedStopIfNeeded } = require('../../utils/finalizeRequestedStop')
 
 async function handleStatusNotification({ params, identity }) {
     console.log(`Server got StatusNotification from ${identity}:`, params);
@@ -9,9 +10,13 @@ async function handleStatusNotification({ params, identity }) {
     await saveLogs(identity, messageType, params);
 
     try {
-        // Production-safe: do NOT auto-complete Progress/Initiated here.
-        // Charger status flaps (Finishing/Available) during real stops and would
-        // kill live billing sessions. Completion stays on StopTransaction only.
+        // Do NOT auto-complete every Finishing/Available flap (would kill live billing).
+        // Only finalize when RemoteStop already set stopRequestedAt — then the app
+        // must leave "Finishing..." even if StopTransaction is delayed until unplug.
+        await finalizeRequestedStopIfNeeded(cpid, params).catch((e) =>
+            console.log('finalizeRequestedStopIfNeeded:', e.message)
+        )
+
         const status = await statusEVPoint(cpid, params)
 
         if (status) {
