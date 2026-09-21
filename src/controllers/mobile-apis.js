@@ -3,16 +3,38 @@ const moment = require('moment')
 const momentTimezone = require('moment-timezone');
 const mongoose = require('mongoose')
 const { generatePdf } = require('../utils/generatePdf');
+const { closeStaleOpenSessionIfNeeded, closeOpenTransactionsForUser } = require('../utils/closeOpenTransactions');
 
 //!ASHIN SSS
 exports.getActiveSession = async (req, res, next) => {
     try {
         const userId = req.params.userId;
+        const filter = {
+            user: userId,
+            transaction_status: { $in: ["Progress", "Initiated"] },
+        };
 
-        const ongoingTransaction = await OCPPTransaction.findOne({ user: userId, transaction_status: { $in: ["Progress", "Initiated"] } })
+        // Optional: target a specific charger/gun (multi-session support)
+        if (req.query.cpid) filter.cpid = String(req.query.cpid);
+        if (req.query.connectorId != null && req.query.connectorId !== '') {
+            const cid = Number(req.query.connectorId);
+            filter.connectorId = Number.isFinite(cid) ? cid : req.query.connectorId;
+        }
+
+        // Prefer the newest session when multiple are open
+        let ongoingTransaction = await OCPPTransaction.findOne(filter).sort({
+            startTime: -1,
+        });
         if (!ongoingTransaction) {
             return res.status(400).json({ error: 'Ongoing transaction not found' });
         }
+
+        // Production-safe stale cleanup (Initiated age / Progress+idle dual-signal)
+        const stale = await closeStaleOpenSessionIfNeeded(ongoingTransaction);
+        if (stale) {
+            return res.status(400).json({ error: 'Ongoing transaction not found' });
+        }
+
         let unitsUsed = 0
         if (ongoingTransaction) unitsUsed = ongoingTransaction.meterStart ? ongoingTransaction.lastMeterValue - (ongoingTransaction.meterStart / 1000) : ongoingTransaction.lastMeterValue //meterStart is in wh format and lastMeterValue is in kWh format 
 
@@ -33,7 +55,6 @@ exports.getActiveSession = async (req, res, next) => {
                                 CPID: 1,
                                 chargingTariff: 1,
                                 location_name: 1,
-
                             }
                         }
                     ],
@@ -122,12 +143,41 @@ exports.getActiveSession = async (req, res, next) => {
             connectorType: connectorType[0].type || null,
             tariff: pipedData[0].evMachines.chargingTariffDetails[0].charger_tariff,
             chargingStationId: pipedData[0].evMachines.location_name || null,
-            currentSoc: ongoingTransaction ? ongoingTransaction.currentSoc : null
+            currentSoc: ongoingTransaction ? ongoingTransaction.currentSoc : null,
+            // App uses this to decide resume vs Initiated-only abandon (never guess via SoC)
+            transactionStatus: ongoingTransaction
+                ? ongoingTransaction.transaction_status
+                : null,
         }
 
         res.status(200).json({ success: true, result: result, message: `Ok` })
     }
     catch (error) {
+        next(error);
+    }
+}
+
+/** Close stuck Initiated sessions. force=true also closes Progress (ops/debug only). */
+exports.abandonActiveSession = async (req, res, next) => {
+    try {
+        const userId = req.params.userId;
+        const force = req.body?.force === true || req.query?.force === 'true';
+        // Production: default Initiated-only. force is an explicit kill-switch.
+        const statuses = force ? ['Initiated', 'Progress'] : ['Initiated'];
+        const result = await closeOpenTransactionsForUser(
+            userId,
+            force ? 'AbandonedForce' : 'AbandonedByUser',
+            statuses
+        );
+        res.status(200).json({
+            status: true,
+            success: true,
+            modifiedCount: result.modifiedCount || 0,
+            message: force
+                ? 'Initiated+Progress cleared (force)'
+                : 'Initiated sessions cleared',
+        });
+    } catch (error) {
         next(error);
     }
 }

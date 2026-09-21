@@ -7,7 +7,7 @@ const { applyServiceFeeOnce } = require('./applyServiceFee')
 
 
 async function updateMeterAmount(transactionId, meterValue, actionType, currentSoc, chargeSpeed) {
-  let userWalletUpdated
+  let userWalletUpdated = false
   //get transaction details from db, which contains user, chargingTariff
   // Incremental bill stays Δenergy × chargingTariff (energyRate). Service fee is once elsewhere.
   const transactionData = await OCPPTransaction.findOne({ transactionId })
@@ -15,29 +15,46 @@ async function updateMeterAmount(transactionId, meterValue, actionType, currentS
   const lastMeterValue = transactionData.lastMeterValue
   const { user, chargingTariff } = transactionData
 
-  // if (meterValue < lastMeterValue) throw new Error(`Last meter value(${lastMeterValue}) greater than current meter value(${meterValue})`)
-  const energyConsumed = meterValue - lastMeterValue // find energy consumed by finding diff between current meter value and last meter value
+  // meterValue / lastMeterValue are in kWh; bill only the incremental delta
+  const energyConsumed = meterValue - lastMeterValue
   const totalAmount = energyConsumed * chargingTariff
 
-  if (totalAmount && actionType === "meterValues") {
-    const { status, walletAmount } = await reduceMoneyFromWallet(user, totalAmount, energyConsumed)
-    // if (!status) throw new Error('User Wallet could not be updated')
-    if (!status) await remoteStopTransactionFunction(transactionData.cpid, transactionData.transactionId)
-    else {
+  if (totalAmount > 0 && (actionType === "meterValues" || actionType === "stopTransaction")) {
+    const { status } = await reduceMoneyFromWallet(user, totalAmount, energyConsumed)
+    if (!status) {
+      if (actionType === "meterValues") {
+        await remoteStopTransactionFunction(transactionData.cpid, transactionData.transactionId)
+      } else {
+        console.log(`StopTransaction wallet update failed for ${transactionId}; finalizing meter anyway`)
+      }
+    } else {
       userWalletUpdated = true
       await updateWalletTransaction(transactionData.user, totalAmount, transactionData.transactionId)
     }
   }
 
-  //If user wallet is not updated due to any issues, the transaction shouldn't be updated as well
+  // Always sync final register on stop (even when delta is 0 or wallet bill failed)
+  if (actionType === "stopTransaction") {
+    let updateBody = { lastMeterValue: meterValue }
+    if (currentSoc) updateBody.currentSoc = currentSoc
+    if (chargeSpeed) updateBody.chargeSpeed = chargeSpeed
+
+    const update = { $set: updateBody }
+    if (userWalletUpdated && totalAmount > 0) {
+      update.$inc = { totalAmount: totalAmount }
+    }
+    await OCPPTransaction.updateOne({ transactionId }, update)
+    return
+  }
+
+  // Mid-session: only advance meter/billing when wallet was charged for this delta
   if (!userWalletUpdated) return
 
-  let updateBody = { lastMeterValue: meterValue, }
-  if (transactionData.transaction_status != "Completed") updateBody.transaction_status = "Progress" //if transaction is already completed, don't update transaction_status
+  let updateBody = { lastMeterValue: meterValue }
+  if (transactionData.transaction_status != "Completed") updateBody.transaction_status = "Progress"
 
   if (currentSoc) updateBody.currentSoc = currentSoc
   if (!transactionData.startSoc && currentSoc) updateBody.startSoc = currentSoc
-
   if (chargeSpeed) updateBody.chargeSpeed = chargeSpeed
 
   await OCPPTransaction.updateOne({ transactionId }, {

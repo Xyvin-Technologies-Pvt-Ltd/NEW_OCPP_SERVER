@@ -1,7 +1,6 @@
-const { deleteMobileClient, getMobileClient } = require('../middlewares/clientsManager');
-const { authenticateUserByUserId } = require('../services/user-service-api');
+const { authenticateUserByUserId, getUserIdAndChargingTariff } = require('../services/user-service-api');
 const sendMessageToClient = require('./cmsToCp');
-const { remoteStopTransactionFunction } = require('./remoteControllerUtils');
+const { closeOpenTransactionsForUser } = require('../utils/closeOpenTransactions');
 
 
 exports.remoteStartTransaction = async (req, res, next) => {
@@ -14,6 +13,20 @@ exports.remoteStartTransaction = async (req, res, next) => {
     try {
         let isAuthenticated = await authenticateUserByUserId(req.body.idTag)
         if (!isAuthenticated) return res.status(400).json({ success: false, message: `Authentication failed - no money` })
+
+        // Safe: clear stuck Initiated only (never Progress / live charging)
+        try {
+            const userData = await getUserIdAndChargingTariff(req.body.idTag)
+            if (userData && userData._id) {
+                await closeOpenTransactionsForUser(
+                    userData._id,
+                    'ClearedStaleInitiated',
+                    ['Initiated']
+                )
+            }
+        } catch (e) {
+            console.log('remoteStart stale-session cleanup:', e.message)
+        }
 
         await sendMessageToClient(evID, messageType, payLoad)
         res.status(200).json({ status: true, message: `${messageType} command set` })
@@ -28,18 +41,12 @@ exports.remoteStopTransaction = async (req, res, next) => {
     const evID = req.params.evID;
     const messageType = 'RemoteStopTransaction';
     const payload = { transactionId: Number(req.body.transactionId) }
-    const mobClient = req.body.transactionId;
 
     try {
+        // Production-safe: only tell the charger to stop.
+        // Do NOT mark DB Completed here — wait for StopTransaction so final
+        // meter / wallet billing stay correct.
         await sendMessageToClient(evID, messageType, payload)
-        const mobileWs = await getMobileClient(mobClient)
-        if (mobileWs) {
-            mobileWs.send(JSON.stringify({ type: 'transactionStop' }));
-            mobileWs.close();
-            deleteMobileClient(mobClient)
-        } else {
-        }
-        //test
         res.status(200).json({ status: true, message: `${messageType} command set` })
 
     } catch (error) {

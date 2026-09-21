@@ -2,6 +2,8 @@ const WebSocket = require('ws');
 const mobileWebSocketServer = new WebSocket.Server({ port: 7535 });
 
 const { addMobileClient, deleteMobileClient } = require('../middlewares/clientsManager')
+const OCPPTransaction = require('../models/ocppTransaction')
+const { pushLiveSessionUpdate } = require('../utils/liveSessionPush')
 
 
 
@@ -27,6 +29,25 @@ async function initializeMobileSocket() {
 
         // Optionally send a welcome message or transaction status
         ws.send(JSON.stringify({ message: 'Connected to transaction WebSocket' }));
+
+        // Push current session snapshot immediately so UI does not wait for first MeterValues
+        try {
+            const txnId = Number(clientId)
+            if (txnId) {
+                const ongoing = await OCPPTransaction.findOne({
+                    transactionId: txnId,
+                    transaction_status: { $in: ['Initiated', 'Progress'] },
+                })
+                if (ongoing) {
+                    // Energy/balance only — do not force status (avoids Initiated/Charging UI glitches)
+                    await pushLiveSessionUpdate(txnId, {
+                        skipStatus: true,
+                    })
+                }
+            }
+        } catch (error) {
+            console.log('WS connect live snapshot error', error.message)
+        }
     });
 
 }
