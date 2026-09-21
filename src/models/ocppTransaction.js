@@ -65,6 +65,19 @@ const ocppTransactionSchema = new mongoose.Schema({
     chargingTariff: {
         type: Number,
     },
+    // Base energy rate before tax (NPR/kWh). Optional — legacy txs omit this.
+    value: {
+        type: Number,
+    },
+    // Flat fee charged once per session. 0 / missing = legacy energy-only billing.
+    serviceAmount: {
+        type: Number,
+        default: 0,
+    },
+    serviceFeeApplied: {
+        type: Boolean,
+        default: false,
+    },
     chargeSpeed:String,
     user: {
         type: mongoose.Schema.Types.ObjectId,

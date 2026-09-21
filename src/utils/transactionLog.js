@@ -2,12 +2,15 @@
 const OCPPTransaction = require('../models/ocppTransaction')
 const { updateWalletTransaction } = require('../services/transaction-service-api');
 const { addUserSessionUpdate } = require('../services/user-service-api');
+const { applyServiceFeeOnce } = require('./applyServiceFee');
 
 
 
-async function saveTransactionLog(identity, params, transaction_status, transactionId, chargingTariff, userId, tax, transactionMode) {
+async function saveTransactionLog(identity, params, transaction_status, transactionId, chargingTariff, userId, tax, transactionMode, extras = {}) {
   // Implement logic to save the transaction log to MongoDB using the OCPPTransaction model
   try {
+    const serviceAmount = Number(extras.serviceAmount) || 0
+    const value = extras.value != null && extras.value !== '' ? Number(extras.value) : undefined
 
     const transactionLog = new OCPPTransaction({
       transactionId: transactionId,
@@ -17,11 +20,15 @@ async function saveTransactionLog(identity, params, transaction_status, transact
       connectorId: params.connectorId,
       meterStart: params.meterStart,
       transactionMode: transactionMode,
+      // chargingTariff = energyRate (value × (1+tax) when new tariff; legacy total otherwise)
       chargingTariff: chargingTariff,
       user: userId,
       lastMeterValue: params.meterStart ? params.meterStart / 1000 : 0, //meterStart is in wh format, using /1000 to save it in kWh
       transaction_status: transaction_status,
       tax,
+      serviceAmount,
+      serviceFeeApplied: false,
+      ...(Number.isFinite(value) ? { value } : {}),
       // Add other fields based on params 
     });
 
@@ -74,6 +81,9 @@ let totalUnits = (params.meterStop - transactionData.meterStart) / 1000
 
       }
     }
+
+    // Ensure flat service fee was applied (no-op if 0 / already applied / legacy)
+    await applyServiceFeeOnce(transactionId)
 
   } catch (error) {
     console.log('Error saving transaction log' + error)
