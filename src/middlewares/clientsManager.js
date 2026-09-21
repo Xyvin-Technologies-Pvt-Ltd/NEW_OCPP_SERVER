@@ -21,18 +21,33 @@ function deleteClient(identity) {
 
  async function addMobileClient(clientId, ws) {
    console.log("🚀 ~ addMobileClient ~ clientId:", clientId)
-   console.log("🚀 ~ addMobileClient ~ ws:", ws)
+   const prev = mobileClients.get(clientId)
+   // Replace previous socket for this txn — otherwise the old `close` handler
+   // deletes the NEW client from the map when the orphaned socket finally dies.
+   if (prev && prev !== ws) {
+     try {
+       prev.removeAllListeners?.('close')
+       prev.close()
+     } catch (e) {
+       console.log('addMobileClient close prev error:', e.message)
+     }
+   }
    mobileClients.set(clientId, ws);
-  
-
 }
+
 async function getMobileClient(client) {
   let ws1 = await mobileClients.get( client);
   return ws1
 }
 
- async function deleteMobileClient(client) {
-     mobileClients.delete( client);
+ /** Only remove if [ws] is still the mapped client (or ws omitted). */
+ async function deleteMobileClient(clientId, ws) {
+   const current = mobileClients.get(clientId)
+   if (ws != null && current && current !== ws) {
+     console.log('deleteMobileClient skip — newer socket owns', clientId)
+     return false
+   }
+   return mobileClients.delete(clientId);
 }
 
 

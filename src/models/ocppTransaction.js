@@ -86,6 +86,10 @@ const ocppTransactionSchema = new mongoose.Schema({
     lastMeterValue: {
         type: Number,
     },
+    /** Set when CSMS sends RemoteStopTransaction — enables Finishing finalize */
+    stopRequestedAt: {
+        type: Date,
+    },
     walletTransactionId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'walletTransaction',

@@ -17,10 +17,14 @@ async function initializeMobileSocket() {
         const clientId = req.url.split('/').pop(); // Implement this to extract client ID from request
 
         await addMobileClient(clientId, ws)
-       
 
         ws.on('close', async function () {
-            await deleteMobileClient(clientId);
+            // Pass ws so we don't wipe a newer reconnect for the same txn
+            await deleteMobileClient(clientId, ws);
+        });
+
+        ws.on('error', function (err) {
+            console.log('mobile ws error', clientId, err.message);
         });
 
         ws.on('message', function incoming(message) {

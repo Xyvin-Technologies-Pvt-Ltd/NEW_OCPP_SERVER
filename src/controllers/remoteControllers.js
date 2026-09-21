@@ -1,6 +1,7 @@
 const { authenticateUserByUserId, getUserIdAndChargingTariff } = require('../services/user-service-api');
 const sendMessageToClient = require('./cmsToCp');
 const { closeOpenTransactionsForUser } = require('../utils/closeOpenTransactions');
+const { markStopRequested } = require('../utils/markStopRequested');
 
 
 exports.remoteStartTransaction = async (req, res, next) => {
@@ -43,10 +44,12 @@ exports.remoteStopTransaction = async (req, res, next) => {
     const payload = { transactionId: Number(req.body.transactionId) }
 
     try {
-        // Production-safe: only tell the charger to stop.
-        // Do NOT mark DB Completed here — wait for StopTransaction so final
-        // meter / wallet billing stay correct.
+        // Tell charger to stop. Final meter still prefers StopTransaction when it
+        // arrives; Finishing/Available after stopRequestedAt unblocks the app.
         await sendMessageToClient(evID, messageType, payload)
+        await markStopRequested(payload.transactionId).catch((e) =>
+            console.log('markStopRequested:', e.message)
+        )
         res.status(200).json({ status: true, message: `${messageType} command set` })
 
     } catch (error) {
