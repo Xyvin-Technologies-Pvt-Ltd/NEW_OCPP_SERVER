@@ -17,7 +17,7 @@ jobs:
       AWS_REGION: ${{ secrets.AWS_REGION }}
       AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
       ECR_REPOSITORY: ocpp_server
-      IMAGE_TAG: latest   # <-- IMPORTANT: production tag
+      IMAGE_TAG: latest
       CONTAINER_NAME: ocpp_server_prod
       PORT1: 5500
       PORT2: 6500
@@ -47,6 +47,7 @@ jobs:
           password: ${{ secrets.PROD_SERVER_PASSWORD }}
           script: |
             set -e
+
             echo "🚀 Starting Production Deployment..."
 
             # Ensure Docker is installed
@@ -69,6 +70,7 @@ jobs:
 
             # Configure AWS access
             mkdir -p ~/.aws
+
             cat <<EOF > ~/.aws/credentials
             [default]
             aws_access_key_id=${{ env.AWS_ACCESS_KEY_ID }}
@@ -77,27 +79,42 @@ jobs:
             EOF
 
             echo "🔹 Logging into ECR..."
-            aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+
+            aws ecr get-login-password \
+              --region ${{ env.AWS_REGION }} | \
+              docker login \
+              --username AWS \
+              --password-stdin \
+              ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
 
             echo "🔹 Pulling latest PRODUCTION image..."
-            docker pull ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+
+            docker pull \
+              ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
 
             echo "🔹 Stopping old container..."
+
             docker stop ${{ env.CONTAINER_NAME }} || true
             docker rm ${{ env.CONTAINER_NAME }} || true
 
             echo "🔹 Starting new container..."
+
             docker run -d \
               -p ${{ env.PORT1 }}:${{ env.PORT1 }} \
               -p ${{ env.PORT2 }}:${{ env.PORT2 }} \
               -p ${{ env.PORT3 }}:${{ env.PORT3 }} \
               --restart always \
               --name ${{ env.CONTAINER_NAME }} \
-                -e NODE_ENV=production \
-                -e EV_MACHINE_SERVICE_URL=http://172.17.0.2:5050 \
-                -e MONGO_URI="${{ secrets.PROD_MONGO_URI }}" \
-                -e DB_NAME="${{ secrets.PROD_DB_NAME }}" \
+              -e NODE_ENV=production \
+              -e ACCESS_TOKEN_SECRET="${{ secrets.PROD_ACCESS_TOKEN_SECRET }}" \
+              -e MONGO_URI="${{ secrets.PROD_MONGO_URI }}" \
+              -e DB_NAME="${{ secrets.PROD_DB_NAME }}" \
+              -e EV_MACHINE_SERVICE_URL=http://172.17.0.2:5050 \
+              -e NOTIFICATION_SERVICE_URL=http://172.17.0.2:5050 \
+              -e TRANSACTION_SERVICE_URL=http://172.17.0.2:5050 \
+              -e USER_SERVICE_URL=http://172.17.0.2:5050 \
               ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
 
             echo "🎉 Production Deployment Successful!"
+
             docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
