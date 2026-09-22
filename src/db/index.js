@@ -6,8 +6,8 @@ let dbName;
 const setMongoConnectionDetails = async () => {
   try {
    
-      mongoUrl = process.env.MONGO_URI || 'mongodb+srv://tijotjoseph:4CHkgnaHODjH0RIR@loyaltycarddb.3o6xb60.mongodb.net';
-      dbName = process.env.DB_NAME || 'OXIUM_DB';
+      mongoUrl = process.env.MONGO_URI || 'mongodb://goec_prod:licnep%40896700@36.253.9.109:27017';
+      dbName = process.env.DB_NAME || 'goec_nepal_prod';
     
   } catch (error) {
     console.error('Error setting MongoDB connection details:', error);
