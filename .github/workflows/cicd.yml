@@ -93,6 +93,8 @@ jobs:
               -p ${{ env.PORT3 }}:${{ env.PORT3 }} \
               --restart always \
               --name ${{ env.CONTAINER_NAME }} \
+                -e NODE_ENV=production \
+                -e EV_MACHINE_SERVICE_URL=http://172.17.0.2:5050 \
               ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
 
             echo "🎉 Production Deployment Successful!"
