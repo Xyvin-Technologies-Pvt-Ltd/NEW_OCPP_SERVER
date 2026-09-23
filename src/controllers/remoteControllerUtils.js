@@ -1,20 +1,15 @@
 const sendMessageToClient = require('./cmsToCp');
-const { deleteMobileClient, getMobileClient } = require('../middlewares/clientsManager');
+const { markStopRequested } = require('../utils/markStopRequested');
 
 exports.remoteStopTransactionFunction = async (evID, transactionId) => {
     const messageType = 'RemoteStopTransaction';
-    const mobClient = transactionId
     const payload = { transactionId: Number(transactionId) }
 
+    // Do not close mobile WS here — handleStopTransaction / Finishing finalize pushes first.
     await sendMessageToClient(evID, messageType, payload)
-    const mobileWs = await getMobileClient(mobClient)
-    if (mobileWs) {
-        mobileWs.send(JSON.stringify({ type: 'transactionStop' }));
-        mobileWs.close();
-        deleteMobileClient(mobClient)
-    }
-    else {
-    }
+    await markStopRequested(payload.transactionId).catch((e) =>
+        console.log('markStopRequested:', e.message)
+    )
 
     return `${messageType} command set`
 }
