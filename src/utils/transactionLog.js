@@ -1,16 +1,32 @@
 
+const mongoose = require('mongoose')
 const OCPPTransaction = require('../models/ocppTransaction')
 const { updateWalletTransaction } = require('../services/transaction-service-api');
 const { addUserSessionUpdate } = require('../services/user-service-api');
 const { applyServiceFeeOnce } = require('./applyServiceFee');
 
 
+// Station + charger the CPID belongs to right now (evmachines is in the shared DB).
+// Best effort: a lookup failure must never block starting a session.
+async function findChargerStation(cpid) {
+  try {
+    const machine = await mongoose.connection.db
+      .collection('evmachines')
+      .findOne({ CPID: cpid }, { projection: { location_name: 1 } })
+    if (!machine) return {}
+    return { chargerId: machine._id, ...(machine.location_name ? { stationId: machine.location_name } : {}) }
+  } catch (error) {
+    console.log(`Station lookup failed for ${cpid}: ${error.message}`)
+    return {}
+  }
+}
 
 async function saveTransactionLog(identity, params, transaction_status, transactionId, chargingTariff, userId, tax, transactionMode, extras = {}) {
   // Implement logic to save the transaction log to MongoDB using the OCPPTransaction model
   try {
     const serviceAmount = Number(extras.serviceAmount) || 0
     const value = extras.value != null && extras.value !== '' ? Number(extras.value) : undefined
+    const chargerStation = await findChargerStation(identity)
 
     const transactionLog = new OCPPTransaction({
       transactionId: transactionId,
@@ -29,7 +45,8 @@ async function saveTransactionLog(identity, params, transaction_status, transact
       serviceAmount,
       serviceFeeApplied: false,
       ...(Number.isFinite(value) ? { value } : {}),
-      // Add other fields based on params 
+      ...chargerStation,
+      // Add other fields based on params
     });
 
     await transactionLog.save();

@@ -99,9 +99,22 @@ const ocppTransactionSchema = new mongoose.Schema({
     },
     tax: {
         type: String
+    },
+    // Snapshot of where the charger was installed when the session started, so
+    // station reports stay correct if the charger is later moved to another station.
+    stationId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'ChargingStation',
+    },
+    chargerId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'EvMachine',
     }
 },{
     timestamps: true});
+
+// Station portal reports: sessions of one station in a date range
+ocppTransactionSchema.index({ stationId: 1, startTime: -1 });
 
 
 // ocppTransactionSchema.pre('save', function (next) {
