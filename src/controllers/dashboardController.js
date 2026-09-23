@@ -623,7 +623,7 @@ exports.dashboardAnalytics = async (req, res) => {
 }
 
 exports.getReport = async (req, res) => {
-    let { cpid, startDate, endDate } = req.query
+    let { cpid, startDate, endDate, location } = req.query
     let filters = { transaction_status: "Completed" }
     if (cpid) filters.cpid = cpid
     if (startDate && endDate) {
@@ -634,6 +634,42 @@ exports.getReport = async (req, res) => {
             filters.startTime = { $gte: fromDate, $lt: toDate }
         }
         else return res.status(400).json({ status: false, message: 'Date should be in "YYYY-MM-DD" Format' })
+    }
+
+    // When location is set, restrict to CPIDs for that charging station
+    if (location) {
+        const locationId = ObjectId.isValid(location) ? new ObjectId(location) : null
+        const machineQuery = locationId
+            ? { location_name: locationId }
+            : null
+
+        let machines = []
+        if (machineQuery) {
+            machines = await mongoose.connection.db.collection('evmachines')
+                .find(machineQuery, { projection: { CPID: 1 } })
+                .toArray()
+        } else {
+            // Fallback: location sent as station name (e.g. "Chobhar")
+            const stations = await mongoose.connection.db.collection('chargingstations')
+                .find({ name: location }, { projection: { _id: 1 } })
+                .toArray()
+            const stationIds = stations.map((s) => s._id)
+            if (!stationIds.length) {
+                return res.status(400).json({ status: false, message: "No Data Found" })
+            }
+            machines = await mongoose.connection.db.collection('evmachines')
+                .find({ location_name: { $in: stationIds } }, { projection: { CPID: 1 } })
+                .toArray()
+        }
+
+        const cpids = machines.map((m) => m.CPID).filter(Boolean)
+        if (!cpids.length) {
+            return res.status(400).json({ status: false, message: "No Data Found" })
+        }
+        if (cpid && !cpids.includes(cpid)) {
+            return res.status(400).json({ status: false, message: "No Data Found" })
+        }
+        filters.cpid = cpid ? cpid : { $in: cpids }
     }
 
     const result = await OCPPTransaction.aggregate([
