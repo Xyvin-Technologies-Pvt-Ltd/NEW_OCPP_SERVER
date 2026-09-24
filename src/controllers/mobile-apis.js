@@ -191,6 +191,31 @@ exports.getChargingHistory = async (req, res, next) => {
 
         let filters = { user: new mongoose.Types.ObjectId(userId) }
 
+        // Optional status filter (body or query). Clients send status=Completed for history-only lists.
+        // DB values: Initiated | Progress | Completed
+        const rawStatus = (req.body?.status ?? req.query?.status ?? "").toString().trim();
+        if (rawStatus) {
+            const normalized = rawStatus.toLowerCase();
+            const statusMap = {
+                completed: "Completed",
+                finished: "Completed",
+                stopped: "Completed",
+                success: "Completed",
+                initiated: "Initiated",
+                progress: "Progress",
+                active: "Progress",
+                charging: "Progress",
+                ongoing: "Progress",
+                live: "Progress",
+                inprogress: "Progress",
+                in_progress: "Progress",
+                "in-progress": "Progress",
+            };
+            const mapped = statusMap[normalized] || rawStatus;
+            // Exact match on known values; otherwise use as-is for forward compatibility
+            filters.transaction_status = mapped;
+        }
+
         if (fromDate && toDate) filters.startTime = { $gte: fromDate, $lt: toDate }
 
         const pageNo  = req.query.pageNo || req.body.pageNo;
