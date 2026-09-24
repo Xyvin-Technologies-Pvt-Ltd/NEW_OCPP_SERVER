@@ -17,6 +17,11 @@ const ocppSchema = new mongoose.Schema(
       type: Object,
       required: true,
     },
+    // Lowercased concatenation of searchable fields (Atlas-safe regex target)
+    searchText: {
+      type: String,
+      index: true,
+    },
   },
   {
     timestamps: true,

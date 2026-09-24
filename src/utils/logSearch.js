@@ -1,55 +1,107 @@
 /**
- * MongoDB $where clause that matches the search text against every value
- * and key on an OCPP log, including nested payload fields.
- * The needle is embedded as a JSON string literal so user input cannot break out.
+ * Atlas-safe charger-log search (no $where / $function).
+ * Flattens nested payload keys/values into a string and $regexMatches it,
+ * along with top-level log fields and optional persisted searchText.
  */
-function logSearchClause(searchQuery) {
-  const needle = JSON.stringify(String(searchQuery).trim().toLowerCase());
+
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function asSearchString(valueExpr) {
+  return {
+    $convert: {
+      input: valueExpr,
+      to: "string",
+      onError: "",
+      onNull: "",
+    },
+  };
+}
+
+/** Recursively flatten objects/arrays into a searchable string (Atlas-safe). */
+function valueToSearchString(valueExpr, depth) {
+  if (depth <= 0) {
+    return asSearchString(valueExpr);
+  }
 
   return {
-    $where: `function () {
-      var needle = ${needle};
-      if (!needle) return true;
+    $switch: {
+      branches: [
+        {
+          case: { $eq: [{ $type: valueExpr }, "object"] },
+          then: {
+            $reduce: {
+              input: { $objectToArray: { $ifNull: [valueExpr, {}] } },
+              initialValue: "",
+              in: {
+                $concat: [
+                  "$$value",
+                  " ",
+                  asSearchString("$$this.k"),
+                  " ",
+                  valueToSearchString("$$this.v", depth - 1),
+                ],
+              },
+            },
+          },
+        },
+        {
+          case: { $eq: [{ $type: valueExpr }, "array"] },
+          then: {
+            $reduce: {
+              input: { $ifNull: [valueExpr, []] },
+              initialValue: "",
+              in: {
+                $concat: [
+                  "$$value",
+                  " ",
+                  valueToSearchString("$$this", depth - 1),
+                ],
+              },
+            },
+          },
+        },
+      ],
+      default: asSearchString(valueExpr),
+    },
+  };
+}
 
-      function matches(value) {
-        if (value == null) return false;
+function buildSearchableDocument() {
+  return {
+    $concat: [
+      { $ifNull: ["$searchText", ""] },
+      " ",
+      { $ifNull: ["$CPID", ""] },
+      " ",
+      { $ifNull: ["$messageType", ""] },
+      " ",
+      { $ifNull: ["$source", ""] },
+      " ",
+      asSearchString("$_id"),
+      " ",
+      asSearchString("$createdAt"),
+      " ",
+      asSearchString("$updatedAt"),
+      " ",
+      valueToSearchString("$payload", 6),
+    ],
+  };
+}
 
-        var type = typeof value;
-        if (type === "string" || type === "number" || type === "boolean") {
-          return String(value).toLowerCase().indexOf(needle) !== -1;
-        }
+function logSearchClause(searchQuery) {
+  const trimmed = String(searchQuery ?? "").trim();
+  if (!trimmed) return {};
 
-        if (value instanceof Date) {
-          return (
-            value.toISOString().toLowerCase().indexOf(needle) !== -1 ||
-            String(value).toLowerCase().indexOf(needle) !== -1
-          );
-        }
-
-        if (value._bsontype === "ObjectId" || value._bsontype === "ObjectID" || typeof value.toHexString === "function") {
-          return String(value).toLowerCase().indexOf(needle) !== -1;
-        }
-
-        if (Array.isArray(value)) {
-          for (var i = 0; i < value.length; i++) {
-            if (matches(value[i])) return true;
-          }
-          return false;
-        }
-
-        if (type === "object") {
-          for (var key in value) {
-            if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
-            if (String(key).toLowerCase().indexOf(needle) !== -1) return true;
-            if (matches(value[key])) return true;
-          }
-        }
-
-        return false;
-      }
-
-      return matches(this);
-    }`,
+  return {
+    $expr: {
+      $regexMatch: {
+        input: buildSearchableDocument(),
+        regex: escapeRegex(trimmed),
+        options: "i",
+      },
+    },
   };
 }
 
@@ -58,4 +110,17 @@ function pageSkip(pageNo) {
   return 10 * (page - 1);
 }
 
-module.exports = { logSearchClause, pageSkip };
+/** Persistable blob so future searches stay cheap and complete. */
+function buildSearchText({ CPID, messageType, source, payload }) {
+  return [CPID, messageType, source, JSON.stringify(payload ?? {})]
+    .filter((part) => part != null && part !== "")
+    .join(" ")
+    .toLowerCase();
+}
+
+module.exports = {
+  logSearchClause,
+  pageSkip,
+  buildSearchText,
+  escapeRegex,
+};
