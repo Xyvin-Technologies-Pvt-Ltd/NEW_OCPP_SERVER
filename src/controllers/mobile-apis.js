@@ -322,8 +322,14 @@ exports.getChargingHistory = async (req, res, next) => {
                 ...data,
                 taxAmount,
                 duration: timeDifference(data.chargingStopTime, data.chargingStartTime),
-                chargingStartTime: data.chargingStartTime ? moment(data.chargingStartTime).format("DD-MM-YYYY hh:mm A") : "",
-                chargingStopTime: data.chargingStopTime ? moment(data.chargingStopTime).format("DD-MM-YYYY hh:mm A") : "",
+                // Emit ISO UTC so clients can convert to local correctly.
+                // (Previously moment(...).format(...) printed server/UTC wall-clock with no zone.)
+                chargingStartTime: data.chargingStartTime
+                    ? moment.utc(data.chargingStartTime).toISOString()
+                    : "",
+                chargingStopTime: data.chargingStopTime
+                    ? moment.utc(data.chargingStopTime).toISOString()
+                    : "",
             }
         })
 
