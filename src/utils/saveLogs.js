@@ -1,5 +1,4 @@
 const OCPPLOG = require('../models/ocppLogs')
-const { buildSearchText } = require('./logSearch')
 
 
 
@@ -11,13 +10,7 @@ async function saveLogs(identity, messageType, params, source) {
         source: source || 'CP',
         CPID: identity,
         messageType: messageType,
-        payload: params,
-        searchText: buildSearchText({
-          CPID: identity,
-          messageType,
-          source: source || 'CP',
-          payload: params,
-        }),
+        payload: params
       }
   
   
