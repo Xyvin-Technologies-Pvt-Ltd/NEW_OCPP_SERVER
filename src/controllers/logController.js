@@ -1,6 +1,7 @@
 const OCPPLOG = require('../models/ocppLogs')
 const moment = require('moment');
 const { getCPID } = require('../services/ev-machine-api');
+const { logSearchClause, pageSkip } = require('../utils/logSearch');
 
 
 exports.getOCPPLogs = async (req, res, next) => {
@@ -38,11 +39,8 @@ exports.getAllOCPPLogs = async (req, res, next) => {
 
     if (cpid) filter.CPID = cpid;
 
-    if (searchQuery) {
-        filter.$or = [
-            { messageType: { $regex: searchQuery, $options: 'i' } },
-            { CPID: { $regex: searchQuery, $options: 'i' } }
-        ];
+    if (searchQuery && String(searchQuery).trim()) {
+        Object.assign(filter, logSearchClause(searchQuery));
     }
 
     if(cpidList){
@@ -50,7 +48,7 @@ exports.getAllOCPPLogs = async (req, res, next) => {
     }
     
 
-    let logData  = await OCPPLOG.find(filter).sort({ timestamp: -1 }).skip(10*(pageNo-1)).limit(10);
+    let logData  = await OCPPLOG.find(filter).sort({ timestamp: -1 }).skip(pageSkip(pageNo)).limit(10);
     let totalCount = await OCPPLOG.find(filter).countDocuments()
 
 

@@ -3,6 +3,7 @@ const moment = require('moment')
 const mongoose = require('mongoose');
 const OCPPLOG = require("../models/ocppLogs");
 const { generateExcel } = require("../utils/generateExcel");
+const { logSearchClause, pageSkip } = require("../utils/logSearch");
 const ObjectId = mongoose.Types.ObjectId;
 
 
@@ -304,15 +305,11 @@ exports.getMachineLogs = async (req, res) => {
     const filter = { CPID: req.params.evMachine };
 
 
-    if (searchQuery) {
-        filter.$or = [
-            { messageType: { $regex: searchQuery, $options: 'i' } }, 
-            { CPID: { $regex: searchQuery, $options: 'i' } }, 
-            { source: { $regex: searchQuery, $options: 'i' } }, 
-        ];
+    if (searchQuery && String(searchQuery).trim()) {
+        Object.assign(filter, logSearchClause(searchQuery));
     }
 
-    let data = await OCPPLOG.find(filter).sort({ timestamp: -1 }).skip(10*(pageNo-1)).limit(10);
+    let data = await OCPPLOG.find(filter).sort({ timestamp: -1 }).skip(pageSkip(pageNo)).limit(10);
     data = data.map(log => {
         return {
             uniqueId: log._id,
