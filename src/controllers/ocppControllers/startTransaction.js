@@ -11,13 +11,16 @@ const { pushLiveSessionUpdate } = require('../../utils/liveSessionPush')
 
 
 async function handleStartTransaction({ params, identity }) {
+    const messageType = 'StartTransaction';
+
     try {
         console.log(`Server got StartTransaction Notification from ${identity}:`, params);
 
+        // CP → CMS request
+        await saveLogs(identity, messageType, params, 'CP');
+
         let chargingTariff, tax, serviceAmount = 0, value
         const idTag = params.idTag;
-        const messageType = 'StartTransaction';
-        await saveLogs(identity, messageType, params);
 
         const transactionId = await generateUniqueTransactionID(9);  //! MongoDb Save 
         const userData = await getUserIdAndChargingTariff(idTag)
@@ -94,26 +97,42 @@ async function handleStartTransaction({ params, identity }) {
             if (userDeviceToken) {
                 sendPushNotification(userDeviceToken, payload, transactionId, userId);
             }
-            return {
+
+            const response = {
                 transactionId,
                 idTagInfo: {
                     status: "Accepted",
                 },
             };
-        } else {
-            return {
-                transactionId: 0,
-                idTagInfo: {
-                    status: "Invalid",
-                },
-            };
+            await saveLogs(identity, messageType, response, 'CMS');
+            return response;
         }
+
+        const invalidResponse = {
+            transactionId: 0,
+            idTagInfo: {
+                status: "Invalid",
+            },
+        };
+        await saveLogs(identity, messageType, invalidResponse, 'CMS');
+        return invalidResponse;
     }
     catch (error) {
         console.log(error)
+        const rejectedResponse = {
+            transactionId: 0,
+            idTagInfo: {
+                status: "Invalid",
+            },
+        };
+        try {
+            await saveLogs(identity, messageType, rejectedResponse, 'CMS');
+        } catch (logError) {
+            console.log('Error saving StartTransaction response log:', logError.message);
+        }
+        return rejectedResponse;
     }
 }
-
 
 
 
