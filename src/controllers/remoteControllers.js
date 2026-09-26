@@ -89,9 +89,15 @@ exports.clearCache = async (req, res, next) => {
 exports.unlockConnector = async (req, res, next) => {
     const evID = req.params.evID;
     const messageType = 'UnlockConnector';
+    const payload = {
+        connectorId: Number(req.body.connectorId),
+    }
 
     try {
-        await sendMessageToClient(evID, messageType)
+        if (!Number.isFinite(payload.connectorId)) {
+            return res.status(400).json({ success: false, message: 'connectorId is required' })
+        }
+        await sendMessageToClient(evID, messageType, payload)
         res.status(200).json({ success: true, message: `${messageType} command set` })
 
     } catch (error) {
